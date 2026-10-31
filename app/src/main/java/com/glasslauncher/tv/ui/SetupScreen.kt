@@ -35,6 +35,7 @@ import com.glasslauncher.tv.data.LauncherThemes
 import com.glasslauncher.tv.GlassApp
 import com.glasslauncher.tv.R
 import com.glasslauncher.tv.data.Backup
+import com.glasslauncher.tv.data.CompanionApps
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -58,6 +59,32 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
     var job by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var rev by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    var downloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var downloadStatus by remember { mutableStateOf("") }
+    val installedApps by app.apps.apps.collectAsState()
+    val companions = remember { listOf(CompanionApps.nuvio) + if (CompanionApps.isFireTv()) listOf(CompanionApps.fixer) else emptyList() }
+    val installed = remember(installedApps, rev) { companions.associateWith { CompanionApps.installed(app, it) } }
+    LaunchedEffect(page) { if (page != 2) { downloadJob?.cancel(); downloadJob = null } }
+
+    fun companionClick(target: CompanionApps.App) {
+        if (downloadJob?.isActive == true) return
+        if (CompanionApps.installed(app, target)) {
+            runCatching { CompanionApps.open(app, target) }.onFailure { downloadStatus = it.message.orEmpty() }
+            return
+        }
+        downloadStatus = "${target.name}: Download wird vorbereitet…"
+        downloadJob = scope.launch {
+            try {
+                val apk = CompanionApps.download(app, target) { downloadStatus = it }
+                downloadStatus = CompanionApps.install(app, target, apk)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                downloadStatus = "Download abgebrochen"
+                throw e
+            } catch (e: Exception) {
+                downloadStatus = e.message ?: "Download fehlgeschlagen. Bitte erneut versuchen."
+            } finally { downloadJob = null; rev++ }
+        }
+    }
 
     fun stop() { job?.cancel(); job = null; sign = null; signMsg = ""; rev++ }
 
@@ -175,6 +202,18 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
                             Buttons(listOf("Next" to { page = 2 }), focusFirst = false)
                         }
                         2 -> {
+                            Title("Install apps", "Optional downloads. Confirm installation in Android, then set up the apps yourself.")
+                            Buttons(companions.map { target ->
+                                (if (installed[target] == true) "Open ${target.name}" else "Download ${target.name}") to { companionClick(target) }
+                            }, wrap = true)
+                            if (downloadStatus.isNotBlank()) {
+                                Spacer(Modifier.height(14.dp))
+                                Text(downloadStatus, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, textAlign = TextAlign.Center)
+                            }
+                            Spacer(Modifier.height(22.dp))
+                            Buttons(listOf("Next" to { page = 3 }), focusFirst = false)
+                        }
+                        3 -> {
                             Title("Connect", "Your catalogs, Continue Watching and Library. Sign in with your phone")
                             @Suppress("UNUSED_EXPRESSION") rev
                             fun tick(on: Boolean, l: String) = if (on) "✓ $l" else l
@@ -187,7 +226,7 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
                             ), wrap = true)
                             if (signMsg.isNotBlank()) { Spacer(Modifier.height(12.dp)); Text(signMsg, color = Color(0xFFFF8F9B), fontSize = 14.sp) }
                             Spacer(Modifier.height(22.dp))
-                            Buttons(listOf("Next" to { page = 3 }), focusFirst = false)
+                            Buttons(listOf("Next" to { page = 4 }), focusFirst = false)
                         }
                         else -> {
                             Title("You're all set", "▲ opens the menu  ·  ▼ from the dock opens the Library  ·  Hold OK on an app for options")
@@ -198,7 +237,7 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
             }
         }
         Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            repeat(4) { i ->
+            repeat(5) { i ->
                 val w by animateDpAsState(if (i == page) 26.dp else 8.dp, tween(260), label = "dot")
                 Box(Modifier.size(w, 8.dp).clip(CircleShape).background(Color.White.copy(alpha = if (i == page) 0.9f else 0.28f)))
             }

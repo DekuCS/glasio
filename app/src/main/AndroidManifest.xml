@@ -23,6 +23,7 @@
         <intent><action android:name="com.gau.go.launcherex.theme"/></intent>
         <intent><action android:name="org.adw.launcher.icons.ACTION_PICK_ICON"/></intent>
         <package android:name="space.nuvio.nativelegacy"/>
+        <package android:name="io.github.hatim.firestickfixer"/>
         <package android:name="com.nuvioreshaped.tv"/>
     </queries>
 
@@ -90,6 +91,7 @@
                 android:resource="@xml/accessibility_config"/>
         </service>
             <receiver android:name=".data.InstallResultReceiver" android:exported="false"/>
+            <receiver android:name=".data.CompanionInstallReceiver" android:exported="false"/>
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>

@@ -47,6 +47,12 @@ Wi-Fi|واي فاي|وای‌فای|Wi-Fi|Wi-Fi|Wi-Fi|WLAN|Wi-Fi|Wi-Fi
 Apps|التطبيقات|برنامه‌ها|Uygulamalar|Apps|Apps|Apps|Приложения|Apps
 Hello|مرحباً|سلام|Merhaba|Bonjour|Hola|Hallo|Привет|Olá
 Let's connect and customise your Glassio|لنربط حساباتك ونخصص Glassio|بیایید Glassio را وصل و شخصی کنیم|Glassio'nu bağlayıp kişiselleştirelim|Connectons et personnalisons votre Glassio|Conectemos y personalicemos tu Glassio|Lass uns dein Glassio verbinden und anpassen|Давайте подключим и настроим Glassio|Vamos ligar e personalizar o seu Glassio
+Install apps||||||Apps installieren||
+Optional downloads. Confirm installation in Android, then set up the apps yourself.||||||Optionale Downloads. Installation in Android bestätigen, danach die Apps selbst einrichten.||
+Download Nuvio Legacy||||||Nuvio Legacy herunterladen||
+Open Nuvio Legacy||||||Nuvio Legacy öffnen||
+Download FireStick Fixer||||||FireStick Fixer herunterladen||
+Open FireStick Fixer||||||FireStick Fixer öffnen||
 Get started|ابدأ|شروع|Başla|Commencer|Empezar|Los geht's|Начать|Começar
 Restore a backup|استعادة نسخة احتياطية|بازیابی پشتیبان|Yedeği geri yükle|Restaurer une sauvegarde|Restaurar copia|Backup wiederherstellen|Восстановить копию|Restaurar cópia
 Later|لاحقاً|بعداً|Sonra|Plus tard|Más tarde|Später|Позже|Mais tarde
