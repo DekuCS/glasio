@@ -82,11 +82,13 @@ class HomeKeyService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || !enabled()) return
         val pkg = event.packageName?.toString() ?: return
-        if (pkg != "com.google.android.apps.tv.launcherx" && pkg != "com.google.android.tvlauncher") return
+        val amazonHome = pkg == "com.amazon.tv.launcher"
+        if (!amazonHome && pkg != "com.google.android.apps.tv.launcherx" && pkg != "com.google.android.tvlauncher") return
         // The fallback brought Glassio to the front whenever the Google TV launcher showed any window of its own
         // (for example when Wi-Fi dropped and came back), even while you were watching. Where the Home key
         // reaches this service it is never needed; elsewhere only the launcher's main screen counts.
-        if (sp.getBoolean("keys", false)) return
+        // Fire OS reserves Home even when a key was delivered earlier. Keep its window fallback active.
+        if (!amazonHome && sp.getBoolean("keys", false)) return
         val cls = event.className?.toString().orEmpty()
         if (!cls.contains("MainActivity") && !cls.contains("HomeActivity") && !cls.contains("LauncherActivity")) return
         // Only reached when the Home key was not filtered above (e.g. Home from the Google TV remote app).
