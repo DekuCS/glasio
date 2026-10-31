@@ -31,7 +31,7 @@ fun sized(url: String, size: String) = url.replace("/t/p/original/", "/t/p/$size
  */
 object GlassCache {
     /** Width of the glass copies (Settings → Performance → Glass detail). */
-    @Volatile var res: Int = 480
+    @Volatile var res: Int = com.glasslauncher.tv.data.AppleTvDesign.value("glassRes")
     // Limited by memory (about 36 MB), not by count: bigger glass copies keep fewer slides instead of more memory.
     private val cache = object : LruCache<String, GlassImages>(36 * 1024 * 1024) {
         override fun sizeOf(key: String, v: GlassImages): Int =

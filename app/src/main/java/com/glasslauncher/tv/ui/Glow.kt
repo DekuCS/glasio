@@ -40,7 +40,7 @@ object Glow {
 
     /** Draws the glow around this element (call from drawBehind). [a] is 0…1 (fades with focus). */
     /** Settings → Glow size (0.3 … 1.6). */
-    @Volatile var amount = 0.7f
+    @Volatile var amount: Float = com.glasslauncher.tv.data.AppleTvDesign.value("glowSize")
 
     fun DrawScope.glow(color: Color, a: Float, tallShape: Boolean = false, grow: Float = 1f, corner: Float = -1f) {
         if (a <= 0.01f) return

@@ -18,10 +18,12 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.net.URLEncoder
 import java.util.Locale
 
-data class CatalogRef(val addon: String, val addonName: String, val type: String, val id: String, val name: String) {
+data class CatalogRef(val addon: String, val addonName: String, val type: String, val id: String, val name: String,
+    val extra: Map<String, String> = emptyMap(), val requiresInput: Boolean = false,
+    val supportsSkip: Boolean = true,
+) {
     val key: String get() = "$addon|$type|$id"
 }
 
@@ -43,11 +45,18 @@ data class HeroItem(
 
 /**
  * Nuvio add-on catalogs, the same way Nuvio TV Relay reads them: manifests -> selected catalogs ->
- * metas, merged round-robin into one endless hero list. The shared pref keys ("addons", "selected",
+ * metas. Discovery balances ranked movie, TV and anime feeds; manual selections retain round-robin mixing. The shared pref keys ("addons", "selected",
  * "manual_addons") deliberately match the relay so a relay export imports one-to-one.
  */
 class CatalogRepository(private val ctx: Context, private val settings: Settings, private val http: Http) {
     private val sp = ctx.getSharedPreferences("glass_catalogs", Context.MODE_PRIVATE)
+    init {
+        // A new TV gets public movie/TV metadata without copying anyone's configured add-on URLs.
+        // An explicitly saved empty list remains empty on future starts and upgrades.
+        if (!sp.contains("addons") && !sp.contains("selected") && !sp.contains("account_addons")) {
+            sp.edit().putStringSet("addons", setOf("https://v3-cinemeta.strem.io/manifest.json")).apply()
+        }
+    }
     private val tmdb = Tmdb(http)
     private val tmdbLock = Mutex()
     private val loadLock = Mutex()
@@ -142,7 +151,24 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
             val c = arr.optJSONObject(i) ?: return@mapNotNull null
             val type = c.optString("type"); val id = c.optString("id")
             if (type.isBlank() || id.isBlank()) null
-            else CatalogRef(url, name, type, id, c.optString("name").ifBlank { id })
+            else {
+                val extra = c.optJSONArray("extra") ?: JSONArray()
+                val defaults = linkedMapOf<String, String>()
+                var requiresInput = false
+                for (n in 0 until extra.length()) {
+                    val e = extra.optJSONObject(n) ?: continue
+                    val key = e.optString("name")
+                    if (key == "skip" || !e.optBoolean("isRequired")) continue
+                    val options = e.optJSONArray("options")
+                    val values = (0 until (options?.length() ?: 0)).map { options!!.optString(it) }
+                    val value = e.optString("default").takeUnless { it.isBlank() || it == "null" }
+                        ?: values.firstOrNull { it == "None" }
+                    if (key == "search" || value == null) requiresInput = true
+                    else defaults[key] = value
+                }
+                CatalogRef(url, name, type, id, c.optString("name").ifBlank { id }, defaults, requiresInput,
+                    (0 until extra.length()).any { extra.optJSONObject(it)?.optString("name") == "skip" })
+            }
         }
     }
 
@@ -169,11 +195,13 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
             catalogs.value = all
             var sel = selectedKeys.value
             if (sel.isEmpty() && all.isNotEmpty()) {
-                sel = all.filter { it.type == "movie" || it.type == "series" }.take(8).map { it.key }.toSet()
+                sel = all.filter { CatalogDiscovery.mediaType(it.type) in setOf("movie", "series", "anime") && !it.requiresInput }.take(8).map { it.key }.toSet()
                 saveSelected(sel)
             }
-            val chosen = all.filter { it.key in sel }
-            if (chosen.isEmpty()) {
+            val discovery = settings.popularCarousel
+            val recommended = if (discovery) CatalogDiscovery.choose(all) else emptyList()
+            var chosen = recommended.ifEmpty { all.filter { it.key in sel && !it.requiresInput } }
+            if (chosen.isEmpty() && !(discovery && settings.tmdbToken.isNotBlank())) {
                 items.value = emptyList()
                 status.value = if (urls.isEmpty()) "No add-ons yet" else "No catalogs selected"
                 return@withContext
@@ -181,6 +209,7 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
             val per = settings.perCatalog
             val results = java.util.concurrent.ConcurrentHashMap<String, List<HeroItem>>()
             fun merge(shuffle: Boolean): List<HeroItem> {
+                if (recommended.isNotEmpty()) return CatalogDiscovery.merge(chosen, results, settings.maxItems, shuffle)
                 val merged = mutableListOf<HeroItem>()
                 val seen = HashSet<String>()
                 val iters = chosen.mapNotNull { results[it.key] }.map { it.iterator() }
@@ -199,7 +228,7 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
                 chosen.map { c ->
                     async {
                         gate.withPermit {
-                            results[c.key] = runCatching { fetchCatalog(c, per) }.getOrDefault(emptyList())
+                            results[c.key] = runCatching { fetchCatalog(c, per, discovery) }.getOrDefault(emptyList())
                             // Show the first results early instead of waiting for every catalog.
                             if (results.size <= 3 || results.size % 8 == 0) items.value = merge(false)
                             status.value = "Loading ${results.size}/${chosen.size} catalogs…"
@@ -207,29 +236,36 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
                     }
                 }.awaitAll()
             }
-            val merged = merge(settings.shuffle || settings.surprise)
+            // MAL/add-on outages must not remove anime from discovery altogether.
+            if (discovery && chosen.filter { CatalogDiscovery.group(it) == "anime" }.all { results[it.key].isNullOrEmpty() }) {
+                val anime = runCatching { tmdb.currentAnime(settings.tmdbToken, settings.descLang, per.coerceAtMost(20)) }.getOrDefault(emptyList())
+                if (anime.isNotEmpty()) {
+                    val fallback = CatalogRef("tmdb://discovery", "TMDB", "anime", "current-anime", "Aktuelle Anime")
+                    chosen = chosen + fallback
+                    results[fallback.key] = anime
+                }
+            }
+            val merged = if (discovery) CatalogDiscovery.merge(chosen, results, settings.maxItems, settings.shuffle || settings.surprise)
+                else merge(settings.shuffle || settings.surprise)
             items.value = merged
-            status.value = "${merged.size} titles from ${chosen.size} catalogs"
+            status.value = (if (recommended.isNotEmpty()) "Neu & beliebt · " else "") + "${merged.size} titles from ${chosen.size} catalogs"
         }
     }
 
-    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
-
-    private fun fetchCatalog(c: CatalogRef, limit: Int): List<HeroItem> {
-        val base = c.addon.removeSuffix("/manifest.json").trimEnd('/')
+    private fun fetchCatalog(c: CatalogRef, limit: Int, discovery: Boolean): List<HeroItem> {
         val out = mutableListOf<HeroItem>()
-        // Surprise me: start further down the catalog now and then (a different mix each time).
-        val start = if (settings.surprise) listOf(0, 0, 100, 200).random() else 0
+        // Manual discovery may sample deeper pages. Ranked recommendations always start at zero.
+        val start = if (settings.surprise && !discovery && c.supportsSkip) listOf(0, 0, 100, 200).random() else 0
         var skip = start
         while (out.size < limit && skip < 1000) {
-            val url = "$base/catalog/${enc(c.type)}/${enc(c.id)}.json?skip=$skip&limit=100"
+            val url = CatalogDiscovery.url(c, skip)
             val metas = runCatching { http.json(url, if (settings.surprise) 5 * 60 * 1000L else 15 * 60 * 1000L).optJSONArray("metas") }.getOrNull()
             if ((metas == null || metas.length() == 0) && skip == start && start > 0) { skip = 0; continue }
             metas ?: break
             if (metas.length() == 0) break
             for (i in 0 until metas.length()) parseMeta(metas.optJSONObject(i) ?: continue, c.type)?.let(out::add)
             skip += metas.length()
-            if (metas.length() < 20) break
+            if (!c.supportsSkip || metas.length() < 20) break
         }
         return out.take(limit)
     }
@@ -246,7 +282,7 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
         val id = first(m, "id", "_id", "imdb_id", "imdbId")
         val name = first(m, "name", "title", "original_name", "original_title")
         if (id.isBlank() || name.isBlank()) return null
-        val type = m.optString("type", catType).ifBlank { catType }
+        val type = CatalogDiscovery.mediaType(m.optString("type", catType).ifBlank { catType })
         val poster = httpUrl(m, "poster", "poster_url", "posterUrl")
         val bg = httpUrl(m, "background", "backdrop", "backdropUrl").ifBlank { poster }
         val logo = httpUrl(m, "logo", "logo_url", "logoUrl")
@@ -289,11 +325,15 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
 
     // ---- Management
     fun toggleCatalog(key: String) {
-        val s = selectedKeys.value.toMutableSet()
+        val s = (if (settings.popularCarousel) CatalogDiscovery.choose(catalogs.value).map { it.key }.toSet() else selectedKeys.value).toMutableSet()
+        settings.popularCarousel = false
         if (!s.remove(key)) s.add(key)
         saveSelected(s)
     }
-    fun selectAll(on: Boolean) = saveSelected(if (on) catalogs.value.map { it.key }.toSet() else emptySet())
+    fun selectAll(on: Boolean) {
+        settings.popularCarousel = false
+        saveSelected(if (on) catalogs.value.filterNot { it.requiresInput }.map { it.key }.toSet() else emptySet())
+    }
 
     /** Reads the add-ons installed in Nuvio through its local "Manage from phone" server. */
     suspend fun connectLocal(): String = withContext(Dispatchers.IO) {

@@ -20,7 +20,7 @@ import java.net.URL
 data class Release(val version: String, val notes: String, val apkUrl: String, val pageUrl: String, val size: Long)
 
 /**
- * Updates from GitHub Releases (github.com/mohammadmrh12/glassio).
+ * Updates from GitHub Releases (github.com/DekuCS/glassio).
  *
  * Checks the latest release a few seconds after start and then every 12 hours. Installing downloads the
  * APK and hands it to the TV's own adb shell (the same one used for the TV screensaver), which updates
@@ -29,8 +29,9 @@ data class Release(val version: String, val notes: String, val apkUrl: String, v
  */
 class Updater(private val ctx: Context, private val scope: CoroutineScope) {
     companion object {
-        const val REPO = "mohammadmrh12/glassio"
+        const val REPO = "DekuCS/glassio"
         const val REPO_URL = "https://github.com/$REPO"
+        internal fun isOwnApk(url: String): Boolean = url.startsWith("https://github.com/$REPO/releases/download/") && url.endsWith(".apk", true)
         private const val API = "https://api.github.com/repos/$REPO/releases/latest"
     }
 
@@ -54,7 +55,7 @@ class Updater(private val ctx: Context, private val scope: CoroutineScope) {
         c.setRequestProperty("Accept", "application/vnd.github+json")
         c.setRequestProperty("User-Agent", "GlassLauncher/$current")
         val code = c.responseCode
-        if (code == 404) { c.disconnect(); "No release published yet" }
+        if (code == 404) { c.disconnect(); available.value = null; lastCheck.value = System.currentTimeMillis(); "No release published yet" }
         else {
             check(code == 200) { "GitHub answered HTTP $code" }
             val j = JSONObject(c.inputStream.bufferedReader().use { it.readText() }); c.disconnect()
@@ -64,7 +65,7 @@ class Updater(private val ctx: Context, private val scope: CoroutineScope) {
             var apk = ""; var size = 0L
             if (assets != null) for (i in 0 until assets.length()) {
                 val a = assets.getJSONObject(i)
-                if (a.optString("name").endsWith(".apk")) { apk = a.optString("browser_download_url"); size = a.optLong("size"); break }
+                if (a.optString("name").endsWith(".apk", true) && isOwnApk(a.optString("browser_download_url"))) { apk = a.optString("browser_download_url"); size = a.optLong("size"); break }
             }
             if (apk.isNotBlank() && newer(tag, current)) {
                 available.value = Release(tag, j.optString("body"), apk, j.optString("html_url"), size)

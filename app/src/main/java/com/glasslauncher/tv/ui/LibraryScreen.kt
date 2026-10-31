@@ -63,6 +63,8 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.glasslauncher.tv.GlassApp
+import com.glasslauncher.tv.data.AppEntry
+import com.glasslauncher.tv.data.DockLayout
 import com.glasslauncher.tv.data.HeroItem
 import com.glasslauncher.tv.data.NuvioLaunch
 import kotlinx.coroutines.Dispatchers
@@ -96,7 +98,16 @@ private fun LibraryPage(app: GlassApp, onTopUp: (() -> Unit)?, active: Boolean, 
     val s = LocalScale.current
     val ctx = LocalContext.current
     val st = app.settings
-    val saved by app.library.saved.collectAsState()
+    val homeFeed = onTopUp != null
+    val installed by app.apps.apps.collectAsState()
+    val homeApps = remember(installed, st.dockOrder, st.showMobileApps, homeFeed) {
+        if (homeFeed) app.apps.ordered(includeHidden = true) else emptyList()
+    }
+    var appDialog by remember { mutableStateOf<DialogState?>(null) }
+    var iconFor by remember { mutableStateOf<AppEntry?>(null) }
+    var movingApp by remember { mutableStateOf<String?>(null) }
+    val appFocus = remember { HashMap<String, FocusRequester>() }
+    val savedAll by app.library.saved.collectAsState()
     val watch by app.library.watchlist.collectAsState()
     val status by app.library.status.collectAsState()
     val first = remember { FocusRequester() }
@@ -107,13 +118,14 @@ private fun LibraryPage(app: GlassApp, onTopUp: (() -> Unit)?, active: Boolean, 
     val cwItems by app.cw.items.collectAsState()
     val cwEntries by app.cw.entries.collectAsState()
     LaunchedEffect(active) { if (active) withContext(Dispatchers.IO) { app.library.refreshWatchlist(); app.library.refreshNuvio(); app.library.refreshSimkl() } }
+    val saved = if (homeFeed) emptyList() else savedAll
     val savedKeys = remember(saved) { saved.map { it.key }.toSet() }
     // The same title in several lists shows once: saved here, then Nuvio, then Trakt.
     val nuvio = if (st.libraryNuvio) nuvioAll.filterNot { it.key in savedKeys } else emptyList()
     val nuvioKeys = remember(nuvio) { nuvio.map { it.key }.toSet() }
-    val trakt = if (st.libraryTrakt) watch.filterNot { it.key in savedKeys || it.key in nuvioKeys } else emptyList()
+    val trakt = if (!homeFeed && st.libraryTrakt) watch.filterNot { it.key in savedKeys || it.key in nuvioKeys } else emptyList()
     val traktKeys = remember(trakt) { trakt.map { it.key }.toSet() }
-    val simkl = if (st.librarySimkl) simklAll.filterNot { it.key in savedKeys || it.key in nuvioKeys || it.key in traktKeys } else emptyList()
+    val simkl = if (!homeFeed && st.librarySimkl) simklAll.filterNot { it.key in savedKeys || it.key in nuvioKeys || it.key in traktKeys } else emptyList()
     // Posters loaded ahead (the Library is built a few seconds after the home screen): the first screens straight
     // into memory, so they're there the moment you go down; the rest only onto the TV's disk cache.
     val preloadKeys = remember(saved, nuvio, trakt, simkl) { (saved + nuvio + trakt + simkl).map { it.key } }
@@ -127,11 +139,13 @@ private fun LibraryPage(app: GlassApp, onTopUp: (() -> Unit)?, active: Boolean, 
             }
         }
     }
-    val cw = if (st.libraryCw && st.continueMode != "off") cwItems else emptyList()
-    val hasAny = saved.isNotEmpty() || trakt.isNotEmpty() || nuvio.isNotEmpty() || simkl.isNotEmpty() || cw.isNotEmpty()
+    // Hero visibility controls only the hero. Progress continues syncing and remains in the Library.
+    val nuvioCwKeys = remember(cwEntries) { cwEntries.filter { DockLayout.isNuvio(it.app) }.map { it.key }.toSet() }
+    val cw = if (st.libraryCw) cwItems.filter { !homeFeed || it.key in nuvioCwKeys } else emptyList()
+    val hasAny = saved.isNotEmpty() || trakt.isNotEmpty() || nuvio.isNotEmpty() || simkl.isNotEmpty() || cw.isNotEmpty() || homeApps.isNotEmpty()
     // Opened with Down from the dock: Up from the top row goes back to the dock (like the Apple TV home page).
-    val firstList = when { cw.isNotEmpty() -> "c"; saved.isNotEmpty() -> "s"; nuvio.isNotEmpty() -> "n"; trakt.isNotEmpty() -> "t"; else -> "k" }
-    fun up(list: String, i: Int): Modifier = if (onTopUp != null && list == firstList && (list == "c" || i < 5))
+    val firstList = when { cw.isNotEmpty() -> "c"; saved.isNotEmpty() -> "s"; nuvio.isNotEmpty() -> "n"; trakt.isNotEmpty() -> "t"; simkl.isNotEmpty() -> "k"; else -> "a" }
+    fun up(list: String, i: Int): Modifier = if (onTopUp != null && list == firstList && (list == "c" || i < st.libraryColumns))
         Modifier.onPreviewKeyEvent { e ->
             if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionUp) { onTopUp(); true } else false
         } else Modifier
@@ -148,13 +162,35 @@ private fun LibraryPage(app: GlassApp, onTopUp: (() -> Unit)?, active: Boolean, 
     var libFocused by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(active) { if (!active) runCatching { grid.scrollToItem(0); cwRow.scrollToItem(0) } }
-    LaunchedEffect(hasAny, active) { if (hasAny && active) { runCatching { grid.scrollToItem(0); cwRow.scrollToItem(0) }; delay(30); runCatching { first.requestFocus() } } }
+    LaunchedEffect(hasAny, active, firstList) { if (hasAny && active && (!libFocused || grid.firstVisibleItemIndex < 3)) { runCatching { grid.scrollToItem(0); cwRow.scrollToItem(0) }; delay(30); runCatching { first.requestFocus() } } }
+    LaunchedEffect(homeApps, movingApp) {
+        movingApp?.let { delay(30); runCatching { appFocus[it]?.requestFocus() } }
+    }
+    BackHandler(enabled = active && movingApp != null) { movingApp = null }
+    val moveAppKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = { ev ->
+        val pkg = movingApp
+        when {
+            pkg == null -> false
+            ev.key == Key.DirectionLeft || ev.key == Key.DirectionRight || ev.key == Key.DirectionUp || ev.key == Key.DirectionDown -> {
+                if (ev.type == KeyEventType.KeyDown) app.apps.move(pkg, when (ev.key) {
+                    Key.DirectionLeft -> -1; Key.DirectionRight -> 1
+                    Key.DirectionUp -> -st.libraryColumns; else -> st.libraryColumns
+                })
+                true
+            }
+            ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.Back -> {
+                if (ev.type == KeyEventType.KeyUp) movingApp = null
+                true
+            }
+            else -> false
+        }
+    }
     // Back from the screensaver (or another app) nothing had the focus here and the remote did nothing.
     val life = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
-    androidx.compose.runtime.DisposableEffect(life, active) {
+    androidx.compose.runtime.DisposableEffect(life, active, iconFor, hasAny) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
             // Only when nothing here is selected any more (a title you were on stays selected).
-            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME && active && hasAny && !libFocused) scope.launch {
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME && active && hasAny && !libFocused && iconFor == null) scope.launch {
                 runCatching { grid.scrollToItem(0); cwRow.scrollToItem(0) }; delay(30); runCatching { first.requestFocus() }
             }
         }
@@ -164,7 +200,7 @@ private fun LibraryPage(app: GlassApp, onTopUp: (() -> Unit)?, active: Boolean, 
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()
         // Hidden (built ahead for Down from the dock) the remote must never move into it: moving around the dock
         // landed on its invisible cards, and nothing on screen was selected any more.
-        .focusProperties { enter = { if (active) androidx.compose.ui.focus.FocusRequester.Default else androidx.compose.ui.focus.FocusRequester.Cancel } }
+        .focusProperties { enter = { if (active && iconFor == null && appDialog == null) androidx.compose.ui.focus.FocusRequester.Default else androidx.compose.ui.focus.FocusRequester.Cancel } }
         .focusGroup()
         .onFocusChanged { libFocused = it.hasFocus }) {
         // (No flat colour under it: the grey picture covers the whole page, and on the TV GPU every full-screen
@@ -193,7 +229,7 @@ private fun LibraryPage(app: GlassApp, onTopUp: (() -> Unit)?, active: Boolean, 
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
-                    Text("Library", color = Color.White, fontSize = (26 * s).sp, fontWeight = FontWeight.Bold)
+                    Text(if (homeFeed) "Nuvio · Weiterschauen" else "Library", color = Color.White, fontSize = (26 * s).sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height((4 * s).dp))
                     Text(
                         if (hasAny) "OK opens · hold OK to remove" else "Nothing here yet. On the home screen, press + next to Play to save a title.",
@@ -203,7 +239,7 @@ private fun LibraryPage(app: GlassApp, onTopUp: (() -> Unit)?, active: Boolean, 
             }
             // Continue Watching: one row of cards with everything inside them (where it came from, episode, progress).
             if (cw.isNotEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) { Section("Continue Watching", s) }
+                if (!homeFeed) item(span = { GridItemSpan(maxLineSpan) }) { Section("Continue Watching", s) }
                 item(span = { GridItemSpan(maxLineSpan) }, key = "cw-row") {
                     val wide = st.libraryCwShape != "poster"
                     val cardW = ((if (wide) 236f else 132f) * st.libraryCwSize * s).dp
@@ -229,6 +265,12 @@ private fun LibraryPage(app: GlassApp, onTopUp: (() -> Unit)?, active: Boolean, 
                     }
                 }
             }
+            if (homeFeed && cw.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text("Keine angefangenen Nuvio-Titel. Dein Fortschritt wird automatisch synchronisiert.",
+                        color = Color.White.copy(alpha = 0.6f), fontSize = (11 * s).sp)
+                }
+            }
             if (saved.isNotEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) { Section("Saved", s) }
                 itemsIndexed(saved, key = { _, it -> "s:" + it.key }) { i, it ->
@@ -237,15 +279,15 @@ private fun LibraryPage(app: GlassApp, onTopUp: (() -> Unit)?, active: Boolean, 
                         onRemove = { app.library.remove(it.key); toast(ctx, "Removed · ${it.name}") })
                 }
             }
-            if (st.libraryNuvio && app.library.nuvio.connected) {
-                item(span = { GridItemSpan(maxLineSpan) }) { Section(if (nuvioStatus.isNotBlank()) "Nuvio library · $nuvioStatus" else "Nuvio library", s) }
+            if (homeFeed || (st.libraryNuvio && app.library.nuvio.connected)) {
+                item(span = { GridItemSpan(maxLineSpan) }) { Section(if (homeFeed) "Nuvio Library" else if (nuvioStatus.isNotBlank()) "Nuvio library · $nuvioStatus" else "Nuvio library", s) }
                 itemsIndexed(nuvio, key = { _, it -> "n:" + it.key }) { i, it ->
                     Poster(it, s, st.libraryTitles, up("n", i).then(if (i == 0 && saved.isEmpty() && cw.isEmpty()) Modifier.focusRequester(first) else Modifier),
                         onOpen = { NuvioLaunch.open(ctx, st, app.http, it) },
                         onRemove = { app.library.removeFromNuvio(it) { ok -> toast(ctx.applicationContext, if (ok) "Removed from your Nuvio library · ${it.name}" else "Nuvio: couldn't remove ${it.name}") } })
                 }
             }
-            if (st.libraryTrakt && app.cw.trakt.connected) {
+            if (!homeFeed && st.libraryTrakt && app.cw.trakt.connected) {
                 item(span = { GridItemSpan(maxLineSpan) }) { Section(if (status.isNotBlank()) "Trakt watchlist · $status" else "Trakt watchlist", s) }
                 itemsIndexed(trakt, key = { _, it -> "t:" + it.key }) { i, it ->
                     Poster(it, s, st.libraryTitles, up("t", i).then(if (i == 0 && saved.isEmpty() && nuvio.isEmpty() && cw.isEmpty()) Modifier.focusRequester(first) else Modifier),
@@ -253,7 +295,7 @@ private fun LibraryPage(app: GlassApp, onTopUp: (() -> Unit)?, active: Boolean, 
                         onRemove = { app.library.removeFromWatchlist(it); toast(ctx, "Removed from the Trakt watchlist · ${it.name}") })
                 }
             }
-            if (st.librarySimkl && app.cw.simkl.connected && simkl.isNotEmpty()) {
+            if (!homeFeed && st.librarySimkl && app.cw.simkl.connected && simkl.isNotEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) { Section("Simkl · Plan to watch", s) }
                 itemsIndexed(simkl, key = { _, it -> "k:" + it.key }) { i, it ->
                     Poster(it, s, st.libraryTitles, up("k", i).then(if (i == 0 && saved.isEmpty() && nuvio.isEmpty() && trakt.isEmpty() && cw.isEmpty()) Modifier.focusRequester(first) else Modifier),
@@ -261,8 +303,32 @@ private fun LibraryPage(app: GlassApp, onTopUp: (() -> Unit)?, active: Boolean, 
                         onRemove = { app.library.removeFromSimkl(it); toast(ctx, "Removed from Simkl · ${it.name}") })
                 }
             }
+            if (homeFeed) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "all-apps-header") { Section("Alle Apps", s) }
+                itemsIndexed(homeApps, key = { _, entry -> "app:" + entry.pkg }) { i, entry ->
+                    val fr = appFocus.getOrPut(entry.pkg) { FocusRequester() }
+                    DockTile(entry, app, s, st.cornerRadius, movingApp == entry.pkg,
+                        Modifier.fillMaxWidth().then(up("a", i)).focusRequester(fr)
+                            .then(if (i == 0 && firstList == "a") Modifier.focusRequester(first) else Modifier),
+                        onFocus = {}, onMoveKey = moveAppKey,
+                        onClick = { app.apps.launchIntent(entry)?.let { runCatching { ctx.startActivity(it) } } },
+                        onLong = { appDialog = appMenu(app, entry, ctx,
+                            startMove = { movingApp = entry.pkg }, pickIcon = { iconFor = entry }) },
+                        alwaysLabel = true, flat = true)
+                }
+            }
         }
         }
+    }
+    DialogHost(appDialog) { appDialog = null }
+    iconFor?.let { entry ->
+        IconPicker(app, entry, onPhone = {
+            app.requestSettings.intValue = PHONE_CATEGORY
+            app.requestSettingsRev.intValue++
+        }, onClose = {
+            iconFor = null
+            scope.launch { delay(150); runCatching { appFocus[entry.pkg]?.requestFocus() } }
+        })
     }
 }
 

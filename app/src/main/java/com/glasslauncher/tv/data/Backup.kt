@@ -69,6 +69,7 @@ object Backup {
             }
             ed.commit(); n++
         }
+        Settings(ctx) // Constructor migrates and sanitizes the restored preferences before restart.
         return n
     }
 

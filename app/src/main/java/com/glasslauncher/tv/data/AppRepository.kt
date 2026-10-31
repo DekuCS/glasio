@@ -77,6 +77,30 @@ class AppRepository(private val ctx: Context, private val settings: Settings, pr
         return if (includeHidden) result else result.filter { it.pkg !in hidden }
     }
 
+    /** Only pinned apps occupy the dock. Missing apps are skipped without removing the preference. */
+    fun dockEntries(): List<AppEntry> {
+        val byPkg = _apps.value.associateBy { it.pkg }
+        return DockLayout.resolve(settings.dockApps, byPkg.keys, settings.hiddenApps.toSet()).mapNotNull { pkg ->
+            if (pkg == DockLayout.SETTINGS) AppEntry(pkg, "Einstellungen",
+                ComponentName(ctx.packageName, "com.glasslauncher.tv.MainActivity"), true)
+            else byPkg[pkg]
+        }
+    }
+
+    fun isPinned(pkg: String): Boolean = dockEntries().any { it.pkg == pkg }
+
+    fun togglePinned(pkg: String) {
+        val selected = settings.dockApps.toMutableList()
+        val aliases = if (pkg in setOf(DockLayout.YOUTUBE, "com.amazon.firetv.youtube"))
+            setOf(DockLayout.YOUTUBE, "com.amazon.firetv.youtube") else setOf(pkg)
+        if (isPinned(pkg)) selected.removeAll(aliases)
+        else {
+            selected.add((selected.indexOf(DockLayout.SETTINGS).takeIf { it >= 0 } ?: selected.size), pkg)
+            if (pkg in settings.hiddenApps) settings.hiddenApps = settings.hiddenApps - pkg
+        }
+        settings.dockApps = selected
+    }
+
     fun move(pkg: String, delta: Int) {
         val order = ordered(includeHidden = true).map { it.pkg }.toMutableList()
         val i = order.indexOf(pkg)
@@ -88,17 +112,19 @@ class AppRepository(private val ctx: Context, private val settings: Settings, pr
 
     /** Moves an app by [delta] positions among the apps that are visible in the dock. */
     fun moveVisible(pkg: String, delta: Int) {
-        val full = ordered(includeHidden = true).map { it.pkg }.toMutableList()
-        val vis = ordered(includeHidden = false).map { it.pkg }
-        val i = vis.indexOf(pkg)
+        val selected = settings.dockApps.toMutableList()
+        val visible = dockEntries().map { it.pkg }
+        val i = visible.indexOf(pkg)
         if (i < 0) return
-        val j = (i + delta).coerceIn(0, vis.lastIndex)
-        if (j == i) return
-        val target = vis[j]
-        full.remove(pkg)
-        val ti = full.indexOf(target)
-        full.add(if (delta > 0) ti + 1 else ti, pkg)
-        settings.dockOrder = full
+        val target = visible[(i + delta).coerceIn(0, visible.lastIndex)]
+        if (target == pkg) return
+        fun role(p: String) = if (p == "com.amazon.firetv.youtube" && DockLayout.YOUTUBE in selected) DockLayout.YOUTUBE else p
+        val moving = role(pkg)
+        selected.remove(moving)
+        val targetIndex = selected.indexOf(role(target))
+        if (targetIndex < 0) return
+        selected.add(if (delta > 0) targetIndex + 1 else targetIndex, moving)
+        settings.dockApps = selected
     }
 
     fun toggleHidden(pkg: String) {

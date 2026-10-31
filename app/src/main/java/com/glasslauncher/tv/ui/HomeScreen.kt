@@ -115,6 +115,7 @@ import coil3.request.SuccessResult
 import coil3.toBitmap
 import com.glasslauncher.tv.GlassApp
 import com.glasslauncher.tv.R
+import com.glasslauncher.tv.data.DockLayout
 import com.glasslauncher.tv.data.AppEntry
 import com.glasslauncher.tv.data.Art
 import com.glasslauncher.tv.data.HeroItem
@@ -341,7 +342,7 @@ fun HomeScreen(app: GlassApp, screen: Screen, onScreen: (Screen) -> Unit) {
                         Key.DirectionUp -> -DOCK_COLUMNS; else -> DOCK_COLUMNS
                     }
                     if (p == FOLDER) {
-                        val n = app.apps.ordered().size
+                        val n = app.apps.dockEntries().size
                         val cur = settings.folderPos.let { if (it < 0 || it > n) n else it }
                         settings.folderPos = (cur + delta).coerceIn(0, n)
                     } else app.apps.moveVisible(p, delta)
@@ -525,6 +526,7 @@ fun HomeScreen(app: GlassApp, screen: Screen, onScreen: (Screen) -> Unit) {
                 Dock(
                     vertical = customPos == "left", centered = customPos == "center",
                     onLibrary = { libFromDock = true; onScreen(Screen.Library) },
+                    onSettings = { settingsCat = 0; onScreen(Screen.Settings) },
                     app = app, s = s, metrics = metrics, screenH = screenHdp, radius = radius,
                     expanded = expanded, onExpanded = { expanded = it },
                     movingPkg = movingPkg, onMoveKey = onMoveKey, firstTile = firstTile, heroFocus = heroFocus,
@@ -623,12 +625,13 @@ fun HomeScreen(app: GlassApp, screen: Screen, onScreen: (Screen) -> Unit) {
     }
 }
 
-private fun appMenu(
+internal fun appMenu(
     app: GlassApp, e: AppEntry, ctx: android.content.Context,
     startMove: (() -> Unit)?, pickIcon: () -> Unit,
 ): DialogState {
     val hidden = e.pkg in app.settings.hiddenApps
     val opts = mutableListOf<Pair<String, () -> Unit>>()
+    opts += (if (app.apps.isPinned(e.pkg)) "Remove from dock" else "Add to dock") to { app.apps.togglePinned(e.pkg) }
     if (hidden) opts += "Open" to { app.apps.launchIntent(e)?.let { runCatching { ctx.startActivity(it) } } }
     opts += "App info" to {
         runCatching {
@@ -994,9 +997,12 @@ private fun HeroSection(
     }
     // Continue Watching stays in memory (picture, logo, glass) for as long as the title is in the list:
     // going back to it — even after browsing far, or with Home — never reloads anything.
-    val cwKeys = remember(cwItems) { cwItems.map { it.key } }
-    LaunchedEffect(cwKeys) { cwItems.forEach { app.catalogs.enrich(it) } }
-    val cwShown = cwItems.map { c -> (enriched[c.key] ?: c).let { withArtwork(it, settings.artChoice, settings.artPick(it.key)) } }
+    // Library-only progress cards use their own small image requests. Do not pin full-screen
+    // backdrops, logos and glass copies for titles excluded from the hero.
+    val heroCwItems = if (mode == "off") emptyList() else cwItems
+    val cwKeys = remember(heroCwItems) { heroCwItems.map { it.key } }
+    LaunchedEffect(cwKeys) { heroCwItems.forEach { app.catalogs.enrich(it) } }
+    val cwShown = heroCwItems.map { c -> (enriched[c.key] ?: c).let { withArtwork(it, settings.artChoice, settings.artPick(it.key)) } }
     LaunchedEffect(cwShown.map { it.background + it.logo }, settings.imageQuality, settings.blurRadius) {
         val loader = SingletonImageLoader.get(ctx)
         val high = settings.imageQuality == "high"
@@ -1503,7 +1509,7 @@ fun UpdateBanner(app: GlassApp, s: Float, modifier: Modifier) {
 }
 
 private fun dateText(): String =
-    java.text.SimpleDateFormat("d MMM ''yy", java.util.Locale.US).format(java.util.Date()).uppercase()
+    java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM, java.util.Locale.getDefault()).format(java.util.Date())
 
 @Composable
 private fun GearButton(s: Float, onClick: () -> Unit, req: FocusRequester, onUp: () -> Boolean = { false }, onFocus: (Boolean) -> Unit) {
@@ -1588,11 +1594,12 @@ private fun Dock(
     /** In the middle of the screen (your own background only): no margin under it. */
     centered: Boolean = false,
     onLibrary: () -> Unit = {},
+    onSettings: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val settings = app.settings
     val allApps by app.apps.apps.collectAsState()
-    val apps = remember(allApps, settings.dockOrder, settings.hiddenApps, settings.showMobileApps) { app.apps.ordered() }
+    val apps = remember(allApps, settings.dockApps, settings.hiddenApps) { app.apps.dockEntries() }
     // null marks where the Apps folder sits.
     val showFolder = settings.showFolder
     val items: List<AppEntry?> = remember(apps, settings.folderPos, showFolder) {
@@ -1609,7 +1616,7 @@ private fun Dock(
     }
     if (vertical) {
         VerticalDock(app, s, metrics, screenH, radius, items, movingPkg, onMoveKey, firstTile, heroFocus, folderFocus, tileFocus, onMove,
-            onMenu, onFolder, onFolderMenu, modifier, edge, onExpanded)
+            onMenu, onFolder, onFolderMenu, modifier, edge, onExpanded, onSettings)
         return
     }
     // Move mode: a moved tile is laid out again in its new slot and loses focus, which then fell to the
@@ -1682,8 +1689,8 @@ private fun Dock(
                                 modifier = base.focusRequester(tileFocus.getOrPut(e.pkg) { FocusRequester() }),
                                 onFocus = { f -> if (f) { onExpanded(r > 0); onMove() } },
                                 onMoveKey = onMoveKey,
-                                onClick = { app.apps.launchIntent(e)?.let { runCatching { ctx.startActivity(it) } } },
-                                onLong = { onMenu(e) }, edges = edges,
+                                onClick = { if (e.pkg == DockLayout.SETTINGS) onSettings() else app.apps.launchIntent(e)?.let { runCatching { ctx.startActivity(it) } } },
+                                onLong = { if (e.pkg == DockLayout.SETTINGS) openAndroidSettings(ctx) else onMenu(e) }, edges = edges,
                             )
                         }
                     }
@@ -1705,6 +1712,7 @@ private fun VerticalDock(
     onMenu: (AppEntry) -> Unit, onFolder: () -> Unit, onFolderMenu: () -> Unit, modifier: Modifier,
     edge: (androidx.compose.ui.focus.FocusDirection) -> Boolean,
     onExpanded: (Boolean) -> Unit,
+    onSettings: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val cellW = metrics.cellW * 0.9f
@@ -1736,8 +1744,8 @@ private fun VerticalDock(
                         DockTile(entry = e, app = app, s = s, radius = radius, moving = movingPkg == e.pkg,
                             modifier = base.focusRequester(tileFocus.getOrPut(e.pkg) { FocusRequester() }),
                             onFocus = { f -> if (f) { onExpanded(false); onMove() } }, onMoveKey = onMoveKey,
-                            onClick = { app.apps.launchIntent(e)?.let { runCatching { ctx.startActivity(it) } } },
-                            onLong = { onMenu(e) }, edges = edges)
+                            onClick = { if (e.pkg == DockLayout.SETTINGS) onSettings() else app.apps.launchIntent(e)?.let { runCatching { ctx.startActivity(it) } } },
+                            onLong = { if (e.pkg == DockLayout.SETTINGS) openAndroidSettings(ctx) else onMenu(e) }, edges = edges)
                     }
                 }
             }
@@ -1969,7 +1977,7 @@ private fun TileFrame(
 }
 
 @Composable
-private fun DockTile(
+internal fun DockTile(
     entry: AppEntry, app: GlassApp, s: Float, radius: Int, moving: Boolean, modifier: Modifier,
     onFocus: (Boolean) -> Unit, onMoveKey: (KeyEvent) -> Boolean, onClick: () -> Unit, onLong: () -> Unit,
     alwaysLabel: Boolean = false, label: String = entry.label, flat: Boolean = false,
@@ -1978,6 +1986,18 @@ private fun DockTile(
     val rev = app.icons.rev.intValue
     val pack = app.settings.iconPack
     val style = app.settings.tileStyle
+    if (entry.pkg == DockLayout.SETTINGS) {
+        TileFrame(s, radius, moving, label, alwaysLabel, modifier, onFocus, onMoveKey, onClick, onLong,
+            false, app.settings.tileLift, app.settings.edgeBounce, edges,
+            zoom = app.settings.tileZoom, glow = app.settings.glow) { focused, r ->
+            TilePlate(style, focused, s, r, flat) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    GearGlyph(Modifier.size((42 * s).dp), Color.White.copy(alpha = if (focused) 1f else 0.78f))
+                }
+            }
+        }
+        return
+    }
     val art by produceState(app.apps.cachedArtwork(entry), entry.pkg, pack, rev) { value = app.apps.artwork(entry) }
     val solid = style == "amoled" || style == "bow"
     val colorOnFocus = app.settings.focusColor
@@ -2216,4 +2236,19 @@ object NavGate {
     @Volatile private var until = 0L
     fun hold(keyCode: Int, ms: Long) { key = keyCode; until = android.os.SystemClock.uptimeMillis() + ms }
     fun blocks(keyCode: Int): Boolean = keyCode == key && android.os.SystemClock.uptimeMillis() < until
+}
+
+
+internal fun openAndroidSettings(ctx: android.content.Context) {
+    // Fire OS routes ACTION_SETTINGS through Amazon's launcher, which a Home-button
+    // replacement can intercept. Use the native device-settings entry on Fire TV.
+    if (android.os.Build.MANUFACTURER.equals("Amazon", ignoreCase = true)) {
+        val native = android.content.Intent("com.amazon.device.settings.action.DEVICE")
+            .setPackage("com.amazon.tv.settings.v2")
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (runCatching { ctx.startActivity(native) }.isSuccess) return
+    }
+    runCatching { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_SETTINGS)
+        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        .onFailure { toast(ctx, "System settings are not available on this device") }
 }

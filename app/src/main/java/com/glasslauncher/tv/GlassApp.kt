@@ -89,12 +89,11 @@ class GlassApp : Application(), coil3.SingletonImageLoader.Factory {
         }
         settings = Settings(this)
         com.glasslauncher.tv.data.I18n.lang = settings.lang
-        settings.firstRun()
         Thread { runCatching { DevHooks.key(this) } }.apply { isDaemon = true }.start()
         com.glasslauncher.tv.ui.Glow.amount = settings.glowSize
         // The menu's TV numbers are ready before it first opens.
         if (settings.menuSys) Thread { runCatching { com.glasslauncher.tv.data.SystemInfo.read(this, settings.sysCpu || settings.sysGpu) } }.apply { isDaemon = true }.start()
-        if (settings.perfMode == "auto") settings.applyMode("auto")
+        // Apply presets when selected, so saved individual adjustments survive a restart.
         com.glasslauncher.tv.ui.GlassCache.res = settings.glassRes
         http = Http(this)
         icons = IconStore(this)

@@ -74,8 +74,8 @@ internal fun SaverContent(app: GlassApp, forceSlideshow: Boolean = false) {
     val st = app.settings
     val slideshow = forceSlideshow || st.saverMode == "slideshow"
     // null while the list loads: black meanwhile (the posters showed a title's logo for a moment).
-    val items by produceState<List<Pair<String, String>>?>(if (slideshow) emptyList() else null) {
-        if (!slideshow) value = withContext(Dispatchers.IO) { AerialSource.playlistItems(app) }
+    val items by produceState<List<AerialSource.PlaybackItem>?>(if (slideshow) emptyList() else null) {
+        if (!slideshow) value = withContext(Dispatchers.IO) { AerialSource.playbackItems(app) }
     }
     var title by remember { mutableStateOf("") }
     var change by remember { mutableIntStateOf(0) }
@@ -88,7 +88,15 @@ internal fun SaverContent(app: GlassApp, forceSlideshow: Boolean = false) {
             // A frame of the new video is on screen (the fade back in waits for it).
             val rendered = remember { BooleanArray(1) }
             // More buffered before it starts (the first seconds of a new video stuttered while it downloaded).
-            val load = remember { androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(20_000, 60_000, 4_000, 6_000).build() }
+            // Bound compressed video memory as well as time: a minute of 4K HDR can otherwise occupy
+            // hundreds of MB on a 2 GB Fire TV and trigger critical memory-pressure callbacks.
+            val load = remember {
+                androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(20_000, 60_000, 4_000, 6_000)
+                    .setTargetBufferBytes(32 * 1024 * 1024)
+                    .setPrioritizeTimeOverSizeThresholds(false)
+                    .build()
+            }
             val players = remember { Array(1) { k -> ExoPlayer.Builder(ctx).setMediaSourceFactory(factory).setLoadControl(load).build().apply {
                 volume = 0f
                 addListener(object : Player.Listener { override fun onRenderedFirstFrame() { rendered[k] = true } })
@@ -111,23 +119,35 @@ internal fun SaverContent(app: GlassApp, forceSlideshow: Boolean = false) {
                 var idx = 0; var errors = 0
                 val single = list.size == 1
                 p.repeatMode = if (single) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-                fun start(i: Int) {
+                var active = 0
+                var encoding = 0
+                fun playEncoding() {
                     rendered[0] = false
-                    p.setMediaItem(MediaItem.fromUri(list[i.mod(list.size)].second)); p.prepare(); p.play()
-                    com.glasslauncher.tv.data.Glog.i("Saver: #${i.mod(list.size)}/${list.size} ${list[i.mod(list.size)].first}")
+                    p.setMediaItem(MediaItem.fromUri(list[active].urls[encoding])); p.prepare(); p.play()
+                }
+                fun start(i: Int) {
+                    active = i.mod(list.size); encoding = 0
+                    playEncoding()
+                    com.glasslauncher.tv.data.Glog.i("Saver: #$active/${list.size} ${list[active].title}")
+                }
+                fun fallback(): Boolean {
+                    if (encoding + 1 >= list[active].urls.size) return false
+                    encoding++
+                    com.glasslauncher.tv.data.Glog.w("Saver: trying fallback encoding $encoding")
+                    playEncoding()
+                    return true
                 }
                 suspend fun waitFrame() {
-                    var w = 0; var tries = 0
+                    var w = 0
                     while (!rendered[0] && w < 12_000) {
-                        if (p.playerError != null) { if (tries++ >= 2) break; p.prepare(); p.play() }
+                        if (p.playerError != null) { if (!fallback()) break; w = 0 }
                         delay(50); w += 50
                     }
                 }
                 var lastBump = android.os.SystemClock.uptimeMillis()
-                start(0); title = list[0].first; change++
+                start(0); title = list[0].title; change++
                 waitFrame()
                 if (fade) black.animateTo(0f, tween(900)) else black.snapTo(0f)
-                if (single) return@LaunchedEffect
                 while (true) {
                     var manual = 0
                     val outMs = if (fade) 700 else 0
@@ -135,9 +155,9 @@ internal fun SaverContent(app: GlassApp, forceSlideshow: Boolean = false) {
                         delay(100)
                         if (SaverControl.step != 0) { manual = SaverControl.step; SaverControl.step = 0; break }
                         val d = p.duration
-                        if (p.playerError != null) { errors++; com.glasslauncher.tv.data.Glog.w("Saver: error ${p.playerError?.errorCodeName}"); break }
+                        if (p.playerError != null) { if (fallback()) { waitFrame(); continue }; errors++; com.glasslauncher.tv.data.Glog.w("Saver: error ${p.playerError?.errorCodeName}"); break }
                         if (p.playbackState == Player.STATE_ENDED) break
-                        if (d > 0 && p.currentPosition >= d - outMs - 200) break
+                        if (!single && d > 0 && p.currentPosition >= d - outMs - 200) break
                     }
                     if (errors > list.size.coerceAtMost(8)) { failed = true; return@LaunchedEffect }
                     // ◀ goes straight to the one before, ▶ (or the end) to the next.
@@ -147,7 +167,7 @@ internal fun SaverContent(app: GlassApp, forceSlideshow: Boolean = false) {
                     start(idx)
                     waitFrame()
                     if (p.playerError == null) errors = 0
-                    title = list[idx.mod(list.size)].first
+                    title = list[idx.mod(list.size)].title
                     // Browsing with ◀ ▶ keeps the info as it is (it used to vanish and come back with every press);
                     // after a pause of a few seconds a new video brings it in again.
                     val now = android.os.SystemClock.uptimeMillis()
@@ -245,4 +265,4 @@ private fun SaverInfo(app: GlassApp, place: String, change: Int) {
     }
 }
 
-private fun dateLine(): String = java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale.ENGLISH).format(java.util.Date())
+private fun dateLine(): String = java.text.DateFormat.getDateInstance(java.text.DateFormat.FULL, java.util.Locale.getDefault()).format(java.util.Date())

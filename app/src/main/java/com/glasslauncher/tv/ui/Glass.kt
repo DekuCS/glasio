@@ -111,7 +111,8 @@ const val VEIL_DIM = 0.62f
 val VeilFilter = androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
     1f - VEIL_DIM, 0f, 0f, 0f, 0f,  0f, 1f - VEIL_DIM, 0f, 0f, 0f,  0f, 0f, 1f - VEIL_DIM, 0f, 0f,  0f, 0f, 0f, 1f, 0f)))
 
-val LocalGlassEnv = compositionLocalOf { GlassEnv(null, null, null, 0, 0, 6, 14) }
+val LocalGlassEnv = compositionLocalOf { GlassEnv(null, null, null, 0, 0,
+    com.glasslauncher.tv.data.AppleTvDesign.value("glassTint"), com.glasslauncher.tv.data.AppleTvDesign.value("refraction")) }
 /** 1.0 at 960dp wide (1080p TV at 2x); every size in the UI is multiplied by this. */
 val LocalScale = staticCompositionLocalOf { 1f }
 
@@ -469,7 +470,7 @@ fun LiquidSurface(
 fun GlassPanel(
     modifier: Modifier = Modifier,
     radius: Dp = 28.dp,
-    style: String = "liquid",
+    style: String = "water_still",
     darken: Float = 0f,
     refract: Boolean = true,
     /** Keep the glass in a cached texture (off while the panel is resizing). */

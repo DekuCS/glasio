@@ -5,3 +5,8 @@ local.properties
 *.apk
 .DS_Store
 releases/
+
+# Local release signing material and credentials
+release-signing/
+*.jks
+*.keystore

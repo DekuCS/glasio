@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.glasslauncher.tv.data.LauncherThemes
 import com.glasslauncher.tv.GlassApp
 import com.glasslauncher.tv.R
 import com.glasslauncher.tv.data.Backup
@@ -167,8 +168,7 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
                         }
                         1 -> {
                             Title("Choose a look", "You can change it any time from the menu")
-                            val themes = listOf("water_still" to "Glass still", "water" to "Glass is glass", "liquid" to "Liquid",
-                                "clear" to "Clear", "amoled" to "Black AMOLED", "bow" to "Black on white")
+                            val themes = LauncherThemes.choices
                             var cur by remember { mutableStateOf(st.theme) }
                             Buttons(themes.map { (k2, l) -> (if (cur == k2) "✓ $l" else l) to { st.applyTheme(k2); cur = k2 } }, wrap = true)
                             Spacer(Modifier.height(22.dp))

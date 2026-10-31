@@ -1,15 +1,27 @@
 package com.glasslauncher.tv.data
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
+import java.time.LocalDate
 import java.net.URLEncoder
 import java.util.Locale
 
 /**
  * Optional TMDB enrichment (same idea as Nuvio TV Relay): title logo, full-size backdrop, localized
- * synopsis, rating, year, genres and the streaming platform. Only runs when a read token is set.
+ * synopsis, rating, year, genres and the streaming platform; also backs up empty anime feeds.
+ * Only runs when a read token is set.
  */
 class Tmdb(private val http: Http) {
     companion object {
+        internal fun recentAnimeDate(date: String, today: LocalDate): Boolean = runCatching {
+            val first = LocalDate.parse(date)
+            !first.isAfter(today) && !first.isBefore(today.minusDays(730))
+        }.getOrDefault(false)
+
         /** TMDB's v3 API Key (32 hex characters): not what Glassio takes. */
         fun looksLikeApiKey(t: String) = Regex("^[0-9a-fA-F]{32}$").matches(t.trim())
 
@@ -41,6 +53,37 @@ class Tmdb(private val http: Http) {
     private fun get(url: String, token: String) = http.json(url, ttl, token)
     private fun norm(s: String) = s.lowercase(Locale.ROOT).replace(Regex("\\(.*?\\)|\\[.*?\\]"), " ")
         .replace(Regex("[^\\p{L}\\p{N}]"), " ").replace(Regex("\\s+"), " ").trim()
+
+    /** Fallback when an installed anime provider returns no feed. Resolves canonical IMDb IDs before titles enter Home. */
+    suspend fun currentAnime(token: String, lang: String, limit: Int): List<HeroItem> = coroutineScope {
+        if (token.isBlank()) return@coroutineScope emptyList()
+        val today = LocalDate.now()
+        val language = TMDB_LANGS[lang] ?: "en-US"
+        val url = "https://api.themoviedb.org/3/discover/tv?language=$language&sort_by=popularity.desc" +
+            "&with_genres=16&with_origin_country=JP&include_adult=false&vote_count.gte=20&vote_average.gte=6" +
+            "&air_date.gte=${today.minusDays(120)}&air_date.lte=$today&first_air_date.gte=${today.minusDays(730)}&first_air_date.lte=$today"
+        val list = runCatching { http.json(url, 60 * 60 * 1000L, token).optJSONArray("results") }.getOrNull()
+            ?: return@coroutineScope emptyList()
+        val gate = Semaphore(3)
+        (0 until minOf(list.length(), limit)).map { index -> async {
+            gate.withPermit {
+                val m = list.optJSONObject(index) ?: return@withPermit null
+                val id = m.optInt("id")
+                if (id <= 0 || m.optBoolean("adult") || !recentAnimeDate(m.optString("first_air_date"), today)) return@withPermit null
+                val imdb = runCatching { get("https://api.themoviedb.org/3/tv/$id/external_ids", token).optString("imdb_id") }.getOrNull()
+                    ?.takeIf { it.matches(Regex("tt\\d{7,10}")) } ?: return@withPermit null
+                val name = m.optString("name").ifBlank { m.optString("original_name") }
+                val backdrop = m.optString("backdrop_path").takeIf { it.startsWith("/") } ?: return@withPermit null
+                if (name.isBlank()) return@withPermit null
+                val poster = m.optString("poster_path").takeIf { it.startsWith("/") }.orEmpty()
+                HeroItem(key = "series:$imdb", id = imdb, type = "series", name = name,
+                    poster = if (poster.isEmpty()) "" else "https://image.tmdb.org/t/p/original$poster",
+                    background = "https://image.tmdb.org/t/p/original$backdrop", logo = "",
+                    overview = m.optString("overview"), rating = String.format(Locale.US, "%.1f", m.optDouble("vote_average")),
+                    year = m.optString("first_air_date").take(4), genres = listOf("Anime"), platform = "")
+            }
+        } }.awaitAll().filterNotNull()
+    }
 
     fun enrich(item: HeroItem, token: String, lang: String): HeroItem? {
         if (token.isBlank()) return null

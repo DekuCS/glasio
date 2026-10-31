@@ -13,23 +13,33 @@ android {
         applicationId = "com.glasslauncher.tv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 41
-        versionName = "2.0.1"
+        versionCode = 21000
+        versionName = "2.1.0"
         // Trakt app (PKCE, no secret). Kept in local.properties, which is not committed.
         val props = Properties().apply {
             rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
         }
         buildConfigField("String", "TRAKT_CLIENT_ID", "\"${props.getProperty("TRAKT_CLIENT_ID", "")}\"")
         buildConfigField("String", "NUVIO_ANON_KEY", "\"${props.getProperty("NUVIO_ANON_KEY", "")}\"")
+        buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"${props.getProperty("TMDB_READ_ACCESS_TOKEN", "")}\"")
         buildConfigField("String", "SIMKL_CLIENT_ID", "\"${props.getProperty("SIMKL_CLIENT_ID", "")}\"")
+    }
+    val distributionKey = rootProject.file("release-signing/glassio.jks")
+    if (distributionKey.exists()) {
+        signingConfigs.create("distribution") {
+            storeFile = distributionKey
+            storePassword = System.getenv("GLASSIO_KEYSTORE_PASSWORD") ?: "android"
+            keyAlias = System.getenv("GLASSIO_KEY_ALIAS") ?: "androiddebugkey"
+            keyPassword = System.getenv("GLASSIO_KEY_PASSWORD") ?: "android"
+        }
     }
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the local debug key so it installs over the debug build and updates cleanly.
-            signingConfig = signingConfigs.getByName("debug")
+            // The distribution key is the same certificate as the first installed build. Never commit it.
+            signingConfig = signingConfigs.findByName("distribution") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

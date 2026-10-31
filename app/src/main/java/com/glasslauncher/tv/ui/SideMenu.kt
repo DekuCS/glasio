@@ -53,16 +53,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.glasslauncher.tv.data.LauncherThemes
 import com.glasslauncher.tv.GlassApp
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 private val EASE = CubicBezierEasing(0.22f, 0f, 0f, 1f)
 
-private val THEMES = listOf(
-    "bow" to "Black on white", "amoled" to "Black AMOLED", "liquid" to "Liquid",
-    "clear" to "Clear", "water_still" to "Glass still", "water" to "Glass is glass",
-)
+private val THEMES = LauncherThemes.choices
 
 /**
  * The menu at the settings button, like the Apple TV Control Center: time, date and weather on top,
@@ -358,7 +356,7 @@ private fun MenuRow(
 
 /** Plates behind the selected icon with "Colour on focus". */
 val PLATES = listOf("light", "dark", "glass", "amoled")
-val PLATE_NAMES = mapOf("light" to "White", "dark" to "Dark", "glass" to "Glass", "amoled" to "Black AMOLED")
+val PLATE_NAMES = mapOf("light" to "White", "dark" to "Dark", "glass" to "Glass", "amoled" to "Black")
 
 private fun DrawScope.plateGlyph(p: String, c: Color) {
     val r = androidx.compose.ui.geometry.CornerRadius(size.width * 0.26f)
@@ -379,7 +377,7 @@ private fun open(ctx: android.content.Context, action: String) {
 }
 
 private fun longDate(): String =
-    java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale.ENGLISH).format(java.util.Date())
+    java.text.DateFormat.getDateInstance(java.text.DateFormat.FULL, java.util.Locale.getDefault()).format(java.util.Date())
 
 /** Thin line glyphs, drawn in the row's colour. */
 private fun DrawScope.glyph(kind: String, c: Color) {
@@ -446,13 +444,9 @@ private fun DrawScope.glyph(kind: String, c: Color) {
 private fun DrawScope.swatch(key: String, light: Boolean) {
     val w = size.width
     val (fill, edge) = when (key) {
-        "bow" -> Color(0xFFF4F4F6) to Color(0xFF111114)
-        "amoled" -> Color.Black to Color.White.copy(alpha = 0.5f)
-        "clear" -> Color.White.copy(alpha = 0.14f) to Color.White.copy(alpha = 0.35f)
         "liquid" -> Color.White.copy(alpha = 0.32f) to Color.White.copy(alpha = 0.7f)
         else -> Color.White.copy(alpha = 0.06f) to Color.White.copy(alpha = 0.9f)
-    }.let { (f, e) -> if (light && key != "bow" && key != "amoled") Color(0x22000000) to Color(0x66000000) else f to e }
+    }.let { (f, e) -> if (light) Color(0x22000000) to Color(0x66000000) else f to e }
     drawRoundRect(fill, cornerRadius = CornerRadius(w * 0.28f))
     drawRoundRect(edge, cornerRadius = CornerRadius(w * 0.28f), style = Stroke(w * 0.07f))
-    if (key == "bow") drawCircle(Color(0xFF111114), w * 0.16f, Offset(w / 2, w / 2))
 }

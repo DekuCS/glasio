@@ -47,6 +47,7 @@ object DevHooks {
         if (!allowed(app, i)) return
         val st = app.settings
         // ---- Settings
+        if (i.getBooleanExtra("apply_apple_tv_defaults", false)) st.applyAppleTvDefaults()
         i.getStringArrayExtra("prefs")?.forEach { st.debugSet(it) }
         i.getStringExtra("pref")?.let { st.debugSet(it) }
         i.getStringExtra("cameras")?.let { st.cameras = it.split(';').filter { l -> l.contains("://") } }

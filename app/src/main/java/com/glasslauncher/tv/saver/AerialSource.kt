@@ -28,13 +28,50 @@ object AerialSource {
     private const val APPLE_FEED = "https://sylvan.apple.com/Aerials/2x/entries.json"
 
     data class Video(val id: String, val title: String, val source: String, val urls: Map<String, String>, val preview: String) {
-        fun url(quality: String): String? {
-            val order = listOf(quality) + when {
-                quality.startsWith("4K") -> listOf("4K-SDR", "1080-SDR", "1080-H264")
-                else -> listOf("1080-H264", "1080-SDR", "4K-SDR")
-            }
-            return order.firstNotNullOfOrNull { urls[it] } ?: urls.values.firstOrNull()
-        }
+        fun playbackUrls(quality: String): List<String> =
+            qualityOrder(quality).mapNotNull { urls[it] }.distinct().ifEmpty { urls.values.take(1) }
+        fun url(quality: String): String? = playbackUrls(quality).firstOrNull()
+
+    }
+
+    /** Lower qualities remain available for a decoder failure on this TV. */
+    fun qualityOrder(quality: String): List<String> = (listOf(quality) + when {
+        quality.startsWith("4K") -> listOf("4K-SDR", "1080-SDR", "1080-H264")
+        else -> listOf("1080-SDR", "1080-H264")
+    }).distinct()
+
+    data class PlaybackItem(val title: String, val urls: List<String>)
+
+    /** Check the connected display and decoder before requesting HDR or HEVC. */
+    private fun supportedQuality(app: GlassApp): String {
+        val requested = app.settings.saverQuality
+        fun hevc(w: Int, h: Int) = runCatching {
+            android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS)
+                .findDecoderForFormat(android.media.MediaFormat.createVideoFormat("video/hevc", w, h)) != null
+        }.getOrDefault(false)
+        if (requested == "1080-H264") return requested
+        if (!hevc(1920, 1080)) return "1080-H264"
+        val fourK = requested.startsWith("4K") && hevc(3840, 2160)
+        val hdrTypes = app.getSystemService(android.hardware.display.DisplayManager::class.java)
+            ?.getDisplay(android.view.Display.DEFAULT_DISPLAY)?.hdrCapabilities?.supportedHdrTypes ?: intArrayOf()
+        val hdr = requested.endsWith("HDR") && hdrTypes.any { it in setOf(
+            android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION,
+            android.view.Display.HdrCapabilities.HDR_TYPE_HDR10,
+            android.view.Display.HdrCapabilities.HDR_TYPE_HLG,
+            android.view.Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS
+        ) }
+        return (if (fourK) "4K" else "1080") + (if (hdr) "-HDR" else "-SDR")
+    }
+
+    /** Keep alternate encodings of the same title for runtime codec/network fallback. */
+    fun playbackItems(app: GlassApp): List<PlaybackItem> {
+        val st = app.settings
+        val all = all(app)
+        val chosen = if (st.saverPick.isNotBlank()) all.filter { it.id == st.saverPick }.ifEmpty { all } else all
+        val quality = supportedQuality(app)
+        val items = chosen.map { PlaybackItem(it.title, it.playbackUrls(quality)) }
+            .filter { it.urls.isNotEmpty() }.distinctBy { it.urls.first() }
+        return if (st.saverShuffle && st.saverPick.isBlank()) items.shuffled() else items
     }
 
     /** Blocking. Every video of one collection (cached for a week). */
