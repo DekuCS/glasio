@@ -62,7 +62,9 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
     var downloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var downloadStatus by remember { mutableStateOf("") }
     val installedApps by app.apps.apps.collectAsState()
-    val companions = remember { listOf(CompanionApps.nuvio) + if (CompanionApps.isFireTv()) listOf(CompanionApps.fixer) else emptyList() }
+    val companions = remember { listOf(CompanionApps.nuvio) +
+        (if (CompanionApps.isFireTv()) listOf(CompanionApps.fixer) else emptyList()) +
+        listOf(CompanionApps.aerialViews, CompanionApps.smartTube) }
     val installed = remember(installedApps, rev) { companions.associateWith { CompanionApps.installed(app, it) } }
     LaunchedEffect(page) { if (page != 2) { downloadJob?.cancel(); downloadJob = null } }
 
@@ -205,7 +207,7 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
                             Title("Install apps", "Optional downloads. Confirm installation in Android, then set up the apps yourself.")
                             Buttons(companions.map { target ->
                                 (if (installed[target] == true) "Open ${target.name}" else "Download ${target.name}") to { companionClick(target) }
-                            }, wrap = true)
+                            }, wrap = true, maxItemsInEachRow = 2)
                             if (downloadStatus.isNotBlank()) {
                                 Spacer(Modifier.height(14.dp))
                                 Text(downloadStatus, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, textAlign = TextAlign.Center)
@@ -277,11 +279,11 @@ private fun Title(t: String, sub: String) {
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun Buttons(items: List<Pair<String, () -> Unit>>, wrap: Boolean = false, focusFirst: Boolean = true) {
+private fun Buttons(items: List<Pair<String, () -> Unit>>, wrap: Boolean = false, focusFirst: Boolean = true, maxItemsInEachRow: Int = 3) {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { if (focusFirst) for (d in listOf(80L, 300L)) { delay(d); runCatching { first.requestFocus() } } }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(14.dp),
-        maxItemsInEachRow = if (wrap) 3 else Int.MAX_VALUE) {
+        maxItemsInEachRow = if (wrap) maxItemsInEachRow else Int.MAX_VALUE) {
         items.forEachIndexed { i, (label, on) -> Pill(label, primary = i == 0 && !wrap, modifier = if (i == 0) Modifier.focusRequester(first) else Modifier, onClick = on) }
     }
 }

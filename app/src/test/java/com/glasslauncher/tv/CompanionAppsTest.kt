@@ -19,6 +19,18 @@ class CompanionAppsTest {
         assertNull(CompanionApps.selectAsset(app, candidates.dropLast(1)))
     }
 
+    @Test fun pinnedAppsAcceptOnlyTheRequestedReleaseAndUniversalAsset() {
+        for (app in listOf(CompanionApps.aerialViews, CompanionApps.smartTube)) {
+            val good = CompanionApps.Asset(app.assetName!!,
+                "https://github.com/${app.repo}/releases/download/${app.releaseTag}/${app.assetName}", 12, "")
+            assertEquals(good, CompanionApps.selectAsset(app, listOf(good)))
+            assertNull(CompanionApps.selectAsset(app, listOf(
+                good.copy(url = good.url.replace("/${app.releaseTag}/", "/other/")),
+                good.copy(name = "other.apk"),
+                good.copy(url = good.url.replace("github.com", "github.com.example.org")))))
+        }
+    }
+
     @Test fun fixerPrefersThePublishersStableAssetName() {
         val app = CompanionApps.fixer
         val candidates = listOf(asset(app.repo, "firestick-fixer-3.1.0.apk"), asset(app.repo, "firestick-fixer.apk"))

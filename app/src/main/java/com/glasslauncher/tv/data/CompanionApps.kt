@@ -19,12 +19,18 @@ import java.net.URL
 import java.security.MessageDigest
 import java.util.zip.ZipFile
 
-/** Optional setup downloads. Only the Android installer can approve installing either app. */
+/** Optional setup downloads. Only the Android installer can approve installing an app. */
 object CompanionApps {
-    data class App(val name: String, val pkg: String, val repo: String, val fireOnly: Boolean = false)
+    data class App(val name: String, val pkg: String, val repo: String, val fireOnly: Boolean = false,
+        val releaseTag: String? = null, val assetName: String? = null)
     data class Asset(val name: String, val url: String, val size: Long, val digest: String)
     val nuvio = App("Nuvio Legacy", "space.nuvio.nativelegacy", "iqui27/nuvio-native-legacy")
     val fixer = App("FireStick Fixer", "io.github.hatim.firestickfixer", "Hornet34/firestick-fixer", true)
+
+    val aerialViews = App("Aerial Views", "com.neilturner.aerialviews", "theothernt/AerialViews",
+        releaseTag = "1.8.5", assetName = "aerial-views-1.8.5.apk")
+    val smartTube = App("SmartTube", "org.smarttube.stable", "yuliskov/SmartTube",
+        releaseTag = "32.68s", assetName = "SmartTube_stable_32.68_universal.apk")
 
     fun isFireTv(manufacturer: String = Build.MANUFACTURER, model: String = Build.MODEL) =
         manufacturer.equals("Amazon", true) || model.startsWith("AFT", true)
@@ -39,9 +45,14 @@ object CompanionApps {
     }
 
     internal fun selectAsset(app: App, assets: List<Asset>): Asset? = assets.filter {
-        it.url.startsWith("https://github.com/${app.repo}/releases/download/") &&
-            if (app == nuvio) it.name.startsWith("Nuvio-", true) && it.name.endsWith("-android.apk", true)
-            else it.name.startsWith("firestick-fixer", true) && it.name.endsWith(".apk", true)
+        val prefix = "https://github.com/${app.repo}/releases/download/"
+        if (app.releaseTag != null && app.assetName != null) {
+            it.name == app.assetName && it.url == "$prefix${app.releaseTag}/${app.assetName}"
+        } else it.url.startsWith(prefix) && when (app) {
+            nuvio -> it.name.startsWith("Nuvio-", true) && it.name.endsWith("-android.apk", true)
+            fixer -> it.name.startsWith("firestick-fixer", true) && it.name.endsWith(".apk", true)
+            else -> false
+        }
     }.sortedBy { if (it.name == "firestick-fixer.apk") 0 else 1 }.firstOrNull()
 
     internal fun acceptsRedirect(url: URL) = url.protocol == "https" &&
@@ -70,7 +81,8 @@ object CompanionApps {
 
     suspend fun download(ctx: Context, app: App, status: (String) -> Unit): File = withContext(Dispatchers.IO) {
         check(!app.fireOnly || isFireTv()) { "FireStick Fixer ist für Amazon Fire TV vorgesehen" }
-        val api = connection(URL("https://api.github.com/repos/${app.repo}/releases/latest"))
+        val releasePath = app.releaseTag?.let { "tags/$it" } ?: "latest"
+        val api = connection(URL("https://api.github.com/repos/${app.repo}/releases/$releasePath"))
         val release = try {
             api.setRequestProperty("Accept", "application/vnd.github+json")
             check(api.responseCode == 200) { "GitHub: HTTP ${api.responseCode}. Bitte später erneut versuchen." }
@@ -79,7 +91,7 @@ object CompanionApps {
         val all = release.getJSONArray("assets")
         val asset = selectAsset(app, (0 until all.length()).map { i -> all.getJSONObject(i).let {
             Asset(it.optString("name"), it.optString("browser_download_url"), it.optLong("size"), it.optString("digest"))
-        } }) ?: error("Keine passende Android-APK im aktuellen Release gefunden")
+        } }) ?: error("Keine passende Android-APK im Release gefunden")
         val file = File(ctx.cacheDir, "setup-${app.pkg}.apk")
         if (file.exists() && asset.digest.startsWith("sha256:") && runCatching { verify(file, asset) }.isSuccess) return@withContext file
         val coroutine = currentCoroutineContext()

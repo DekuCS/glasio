@@ -49,6 +49,10 @@ Hello|مرحباً|سلام|Merhaba|Bonjour|Hola|Hallo|Привет|Olá
 Let's connect and customise your Glassio|لنربط حساباتك ونخصص Glassio|بیایید Glassio را وصل و شخصی کنیم|Glassio'nu bağlayıp kişiselleştirelim|Connectons et personnalisons votre Glassio|Conectemos y personalicemos tu Glassio|Lass uns dein Glassio verbinden und anpassen|Давайте подключим и настроим Glassio|Vamos ligar e personalizar o seu Glassio
 Install apps||||||Apps installieren||
 Optional downloads. Confirm installation in Android, then set up the apps yourself.||||||Optionale Downloads. Installation in Android bestätigen, danach die Apps selbst einrichten.||
+Download Aerial Views||||||Aerial Views herunterladen||
+Open Aerial Views||||||Aerial Views öffnen||
+Download SmartTube||||||SmartTube herunterladen||
+Open SmartTube||||||SmartTube öffnen||
 Download Nuvio Legacy||||||Nuvio Legacy herunterladen||
 Open Nuvio Legacy||||||Nuvio Legacy öffnen||
 Download FireStick Fixer||||||FireStick Fixer herunterladen||
