@@ -1335,14 +1335,14 @@ private fun Chip(text: String, s: Float, kind: Int = 0) {
     val shape = RoundedCornerShape((3 * s).dp)
     val pad = Modifier.padding(horizontal = (6 * s).dp, vertical = (1.5f * s).dp)
     when (kind) {
-        // Rating: filled yellow star, white number, the outline every chip has.
+        // Rating: the whole chip is the yellow plate, star and number in black (white on yellow is unreadable).
         1 -> Row(
-            modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.55f), shape).then(pad),
+            modifier = Modifier.background(RatingStar, shape).then(pad),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("★", color = RatingStar, fontSize = (10.5f * s).sp, fontWeight = FontWeight.Medium)
+            Text("★", color = Color.Black, fontSize = (10.5f * s).sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.width((3 * s).dp))
-            Text(text, color = Color.White, fontSize = (10.5f * s).sp, fontWeight = FontWeight.Medium)
+            Text(text, color = Color.Black, fontSize = (10.5f * s).sp, fontWeight = FontWeight.SemiBold)
         }
         // Year: white plate, black number.
         2 -> Text(

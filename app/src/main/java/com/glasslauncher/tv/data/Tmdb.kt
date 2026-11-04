@@ -103,13 +103,14 @@ class Tmdb(private val http: Http) {
             "movie/popular?region=$REGION",
             "tv/popular",
             "discover/movie?sort_by=popularity.desc&with_origin_country=$REGION",
-            "discover/tv?sort_by=popularity.desc&with_origin_country=$REGION",
         )
         val per = (limit / feeds.size + 3).coerceIn(4, 20)
         val rows = feeds.map { feed ->
             async {
                 runCatching {
-                    get("https://api.themoviedb.org/3/$feed&language=$language&include_adult=false", token)
+                    // Feeds that already carry a query need "&", the plain paths need "?".
+                    val sep = if ('?' in feed) "&" else "?"
+                    get("https://api.themoviedb.org/3/$feed${sep}language=$language&include_adult=false", token)
                         .optJSONArray("results")
                 }.getOrNull()?.let { arr -> (0 until minOf(arr.length(), per)).mapNotNull { arr.optJSONObject(it) } }
                     .orEmpty().toMutableList()
