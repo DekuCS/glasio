@@ -52,7 +52,7 @@ object AppleTvDesign {
         "showSynopsis" to true,
         "synopsisOnFocus" to true,
         "synopsisScale" to 0.9f,
-        "synopsisLines" to 4,
+        "synopsisLines" to 0,     
         "dotsMode" to "window",
         "dotsAutoHide" to true,
         "dotsMax" to 10,

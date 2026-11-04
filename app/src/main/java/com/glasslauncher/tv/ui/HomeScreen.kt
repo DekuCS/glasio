@@ -1188,10 +1188,11 @@ private fun HeroInfo(
             .padding((8 * s).dp),
     ) {
       Column {
-        // With the Apple TV buttons the text sits in a fixed-height area: logo and details stay where they always
-        // were (top), the synopsis takes what is left (its own line setting), and the buttons below never move.
+        // With the Apple TV buttons the text sits in an area that starts at a fixed height: logo and details stay
+        // where they always were (top), the synopsis takes what is left, and the buttons below never move —
+        // unless the whole synopsis is on (0 lines), then the block grows and the buttons follow it down.
         val fixed = nextBtn
-        Box(if (fixed) Modifier.height((240 * s).dp).clipToBounds() else Modifier, contentAlignment = Alignment.TopStart) {
+        Box(if (fixed) Modifier.heightIn(min = (240 * s).dp) else Modifier, contentAlignment = Alignment.TopStart) {
         AnimatedContent(
             targetState = item,
             transitionSpec = { fadeIn(tween(ms)) togetherWith fadeOut(tween((ms * 0.4f).toInt())) },
@@ -1242,7 +1243,8 @@ private fun HeroInfo(
                             Text(
                                 it.overview, color = AppleSecondary, fontWeight = FontWeight.Medium,
                                 fontSize = (11.5f * s * settings.synopsisScale).sp, lineHeight = (16 * s * settings.synopsisScale).sp,
-                                maxLines = settings.synopsisLines, overflow = TextOverflow.Ellipsis,
+                                maxLines = if (settings.synopsisLines <= 0) Int.MAX_VALUE else settings.synopsisLines,
+                                overflow = TextOverflow.Ellipsis,
                                 modifier = if (headW > 0) Modifier.width(with(density) { headW.toDp() }) else Modifier,
                             )
                         }

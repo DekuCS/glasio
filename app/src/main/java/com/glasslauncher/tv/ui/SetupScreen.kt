@@ -58,6 +58,7 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
     var signMsg by remember { mutableStateOf("") }
     var job by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var rev by remember { mutableIntStateOf(0) }
+    var dialog by remember { mutableStateOf<DialogState?>(null) }
     val scope = rememberCoroutineScope()
     var downloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var downloadStatus by remember { mutableStateOf("") }
@@ -143,6 +144,28 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
     fun catalogs() = start({ com.glasslauncher.tv.net.PhoneHost.start(app)?.let { SignIn("Catalogs", it, "", "Scan with your phone (same Wi-Fi) and add your add-ons with a real keyboard") } },
         { false })
 
+    /** GitHub sign-in: the owner's account brings the keys the build already carries into the settings. */
+    fun github() {
+        dialog = TextEntry(
+            "Sign in with GitHub", "",
+            "Your GitHub name (${com.glasslauncher.tv.data.DekuKeys.GITHUB}) or a token starting ghp_. Then the stored keys are imported.",
+        ) { v ->
+            note = "Checking GitHub…"
+            scope.launch {
+                when (withContext(Dispatchers.IO) { com.glasslauncher.tv.data.DekuKeys.verify(v) }) {
+                    true -> {
+                        val n = withContext(Dispatchers.IO) { com.glasslauncher.tv.data.DekuKeys.import(st) }
+                        app.catalogs.clearEnrichment()
+                        note = if (n > 0) "✓ $n key imported. Reloading the catalogs…" else "No keys stored in this build."
+                        if (n > 0) withContext(Dispatchers.IO) { app.catalogs.refresh() }
+                    }
+                    false -> note = "That is not ${com.glasslauncher.tv.data.DekuKeys.GITHUB}."
+                    null -> note = "GitHub could not be reached. Try again."
+                }
+            }
+        }
+    }
+
     Box(
         Modifier.fillMaxSize().background(Color(0xFF05060B))
             .onPreviewKeyEvent {
@@ -176,6 +199,7 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
                             Spacer(Modifier.height(40.dp))
                             Buttons(listOf(
                                 "Get started" to { page = 1 },
+                                "Sign in with GitHub" to { github() },
                                 "Restore a backup" to {
                                     note = "Looking for a backup…"
                                     scope.launch {
@@ -206,7 +230,7 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
                         2 -> {
                             Title("Install apps", "Optional downloads. Confirm installation in Android, then set up the apps yourself.")
                             Buttons(companions.map { target ->
-                                (if (installed[target] == true) "Open ${target.name}" else "Download ${target.name}") to { companionClick(target) }
+                                (if (installed[target] == true) com.glasslauncher.tv.data.I18n.tr("Open") + " ${target.name}" else com.glasslauncher.tv.data.I18n.tr("Download") + " ${target.name}") to { companionClick(target) }
                             }, wrap = true, maxItemsInEachRow = 2)
                             if (downloadStatus.isNotBlank()) {
                                 Spacer(Modifier.height(14.dp))
@@ -231,7 +255,7 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
                             Buttons(listOf("Next" to { page = 4 }), focusFirst = false)
                         }
                         else -> {
-                            Title("You're all set", "▲ opens the menu  ·  ▼ from the dock opens the Library  ·  Hold OK on an app for options")
+                            Title("You're all set", "The menu button opens the menu, the dock opens the Library, holding OK on an app shows options")
                             Buttons(listOf("Start" to onDone))
                         }
                     }
@@ -244,6 +268,7 @@ fun SetupScreen(app: GlassApp, onDone: () -> Unit) {
                 Box(Modifier.size(w, 8.dp).clip(CircleShape).background(Color.White.copy(alpha = if (i == page) 0.9f else 0.28f)))
             }
         }
+        DialogHost(dialog) { dialog = null }
     }
 }
 
@@ -273,7 +298,7 @@ private fun SignInPane(s: SignIn, msg: String, onBack: () -> Unit) {
 private fun Title(t: String, sub: String) {
     Text(com.glasslauncher.tv.data.I18n.tr(t), color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Light)
     Spacer(Modifier.height(8.dp))
-    Text(sub, color = Color.White.copy(alpha = 0.6f), fontSize = 16.sp, textAlign = TextAlign.Center)
+    Text(com.glasslauncher.tv.data.I18n.tr(sub), color = Color.White.copy(alpha = 0.6f), fontSize = 16.sp, textAlign = TextAlign.Center)
     Spacer(Modifier.height(34.dp))
 }
 

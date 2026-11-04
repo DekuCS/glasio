@@ -104,7 +104,7 @@
   "slideAnim": "apple",
   "surprise": true,
   "surpriseMin": 60,
-  "synopsisLines": 4,
+  "synopsisLines": 0,
   "synopsisOnFocus": true,
   "synopsisScale": 0.9,
   "sysCpu": true,

@@ -315,20 +315,24 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
 
     fun resolve(item: HeroItem): HeroItem = enriched.value[item.key] ?: item
 
+    /** Failed lookups are retried a few times: a blank network moment must not pin the add-on's English text. */
+    private val enrichTries = HashMap<String, Int>()
+
     /** Fetches TMDB details for [item] in the background; no-op without a token. */
     suspend fun enrich(item: HeroItem) {
         val token = settings.tmdbToken
-        if (token.isBlank() || enriched.value.containsKey(item.key)) return
+        if (token.isBlank() || enriched.value.containsKey(item.key) || (enrichTries[item.key] ?: 0) >= 3) return
         withContext(Dispatchers.IO) {
             tmdbLock.withLock {
                 if (enriched.value.containsKey(item.key)) return@withLock
                 val r = runCatching { tmdb.enrich(item, token, settings.descLang) }.getOrNull()
-                enriched.value = enriched.value + (item.key to (r ?: item))
+                if (r != null) enriched.value = enriched.value + (item.key to r)
+                else enrichTries[item.key] = (enrichTries[item.key] ?: 0) + 1
             }
         }
     }
 
-    fun clearEnrichment() { enriched.value = emptyMap() }
+    fun clearEnrichment() { enriched.value = emptyMap(); enrichTries.clear() }
 
     // ---- Management
     fun toggleCatalog(key: String) {

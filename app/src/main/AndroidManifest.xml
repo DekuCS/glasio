@@ -109,5 +109,12 @@
             android:launchMode="singleTask"
             android:taskAffinity=".recents"
             android:configChanges="keyboard|keyboardHidden|navigation|screenSize|orientation|uiMode"/>
+
+        <!-- Settings come in from the desktop app through ADB (`content call`), never from another
+             app: ConfigProvider only answers the shell and root user. -->
+        <provider
+            android:name=".data.ConfigProvider"
+            android:authorities="com.glasslauncher.tv.config"
+            android:exported="true"/>
     </application>
 </manifest>

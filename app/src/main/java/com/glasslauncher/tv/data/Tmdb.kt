@@ -176,12 +176,18 @@ class Tmdb(private val http: Http) {
             if (tmdbId == 0) {
                 val q = URLEncoder.encode(item.name, "UTF-8")
                 val y = if (item.year.isNotBlank()) (if (isTv) "&first_air_date_year=${item.year}" else "&year=${item.year}") else ""
-                val r = get("https://api.themoviedb.org/3/search/$kind?query=$q$y&include_adult=false", token)
-                val results = r.optJSONArray("results")
-                if (results != null) for (i in 0 until results.length()) {
-                    val c = results.optJSONObject(i) ?: continue
-                    val titles = listOf("name", "title", "original_name", "original_title").map { norm(c.optString(it)) }
-                    if (norm(item.name) in titles) { tmdbId = c.optInt("id", 0); break }
+                // German search first: its result carries the German title, which is the one the add-on shows.
+                // The second pass has no language, so an add-on that lists the English title still finds the
+                // title and gets the German details.
+                for (searchLang in listOf("&language=$tmdbLang", "")) {
+                    val r = runCatching { get("https://api.themoviedb.org/3/search/$kind?query=$q$y$searchLang&include_adult=false", token) }.getOrNull() ?: continue
+                    val results = r.optJSONArray("results") ?: continue
+                    for (i in 0 until results.length()) {
+                        val c = results.optJSONObject(i) ?: continue
+                        val titles = listOf("name", "title", "original_name", "original_title").map { norm(c.optString(it)) }
+                        if (norm(item.name) in titles) { tmdbId = c.optInt("id", 0); break }
+                    }
+                    if (tmdbId != 0) break
                 }
             }
         }

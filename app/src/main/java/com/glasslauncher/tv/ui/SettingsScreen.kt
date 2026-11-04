@@ -306,7 +306,7 @@ fun SettingsScreen(app: GlassApp, initialCat: Int, onClose: () -> Unit) {
                 Toggle("Synopsis", "", { st.showSynopsis }, { st.showSynopsis = it }),
                 Toggle("Synopsis only when the carousel is selected", "Hidden while you browse the apps", { st.synopsisOnFocus }, { st.synopsisOnFocus = it }),
                 Adjust("Synopsis size", "", { pct(st.synopsisScale) }, { st.synopsisScale = tenth(st.synopsisScale, it) }),
-                Adjust("Synopsis lines", "", { "${st.synopsisLines}" }, { st.synopsisLines += it }),
+                Adjust("Synopsis lines", "0 = the whole text", { if (st.synopsisLines <= 0) "All" else "${st.synopsisLines}" }, { st.synopsisLines += it }),
                 Adjust("Dots style", "", {
                     when (st.dotsMode) { "window" -> "Dots"; "liquid" -> "Liquid glass dots"; "progress" -> "Progress bar"; else -> "Hidden" }
                 }, { st.dotsMode = cycle(listOf("window", "liquid", "progress", "hidden"), st.dotsMode, it) }),
@@ -803,6 +803,23 @@ fun SettingsScreen(app: GlassApp, initialCat: Int, onClose: () -> Unit) {
             val devOn = runCatching { AndroidSettings.Global.getInt(ctx.contentResolver, AndroidSettings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1 }.getOrDefault(false)
             val adbOn = runCatching { AndroidSettings.Global.getInt(ctx.contentResolver, AndroidSettings.Global.ADB_ENABLED, 0) == 1 }.getOrDefault(false)
             listOf(
+                Act("Sign in with GitHub", "Imports the keys the build carries, once GitHub confirms the account is ${com.glasslauncher.tv.data.DekuKeys.GITHUB}", "") {
+                    dialog = TextEntry("Sign in with GitHub", "",
+                        "Your GitHub name (${com.glasslauncher.tv.data.DekuKeys.GITHUB}) or a token starting ghp_. Then the stored keys are imported.") { v ->
+                        scope.launch(Dispatchers.IO) {
+                            when (com.glasslauncher.tv.data.DekuKeys.verify(v)) {
+                                true -> {
+                                    val n = com.glasslauncher.tv.data.DekuKeys.import(st)
+                                    app.catalogs.clearEnrichment()
+                                    toast(ctx, if (n > 0) "✓ $n key imported" else "No keys stored in this build")
+                                    if (n > 0) app.catalogs.refresh()
+                                }
+                                false -> toast(ctx, "That is not ${com.glasslauncher.tv.data.DekuKeys.GITHUB}")
+                                null -> toast(ctx, "GitHub could not be reached")
+                            }
+                        }
+                    }
+                },
                 Toggle("Home button opens Glassio", "Needs the accessibility service below", { st.interceptHome }, { st.interceptHome = it }),
                 Act("Turn on the accessibility service", "Find Glassio and switch it on", "") { openSystem(ctx, AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS) },
                 Act("Turn it on with ADB", if (homeKeyOn) "The accessibility service is on" else "When the TV doesn't let you (restricted setting / greyed out). Needs TV access (ADB), below", "") {
@@ -926,7 +943,7 @@ fun SettingsScreen(app: GlassApp, initialCat: Int, onClose: () -> Unit) {
             GlassPanel(Modifier.width((230 * s).dp).fillMaxHeight(), (30 * s).dp, style = st.panelStyle, darken = 0.20f) {
                 // Scrolls when the list is taller than the screen (the last entry, About, was cut off).
                 Column(Modifier.padding(horizontal = (14 * s).dp, vertical = (12 * s).dp).verticalScroll(rememberScrollState())) {
-                    Text("Settings", color = Color.White, fontSize = (22 * s).sp, fontWeight = FontWeight.Light, modifier = Modifier.padding(start = (8 * s).dp, bottom = (4 * s).dp))
+                    Text(com.glasslauncher.tv.data.I18n.tr("Settings"), color = Color.White, fontSize = (22 * s).sp, fontWeight = FontWeight.Light, modifier = Modifier.padding(start = (8 * s).dp, bottom = (4 * s).dp))
                     categories.forEachIndexed { i, c ->
                         var f by remember { mutableStateOf(false) }
                         Text(

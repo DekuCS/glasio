@@ -50,6 +50,8 @@ class Settings(private val ctx: Context) {
     }
 
     private fun touch() { rev.intValue = rev.intValue + 1 }
+    /** Redraws every screen after the settings were written from outside (see ConfigProvider). */
+    fun refresh() = touch()
     /** Test only: every stored value (am start --ez dump_prefs true → logcat GlassPrefs). */
     fun dumpAll(): Map<String, *> = sp.all
 
@@ -141,7 +143,8 @@ class Settings(private val ctx: Context) {
     /** Back on the home screen starts the screensaver (like Apple TV). */
     var backSaver: Boolean get() = b("backSaver", AppleTvDesign.value("backSaver")); set(v) = putB("backSaver", v)
     var synopsisScale: Float get() = f("synopsisScale", AppleTvDesign.value("synopsisScale")); set(v) = putF("synopsisScale", v.coerceIn(0.6f, 2.0f))
-    var synopsisLines: Int get() = i("synopsisLines", AppleTvDesign.value("synopsisLines")); set(v) = putI("synopsisLines", v.coerceIn(1, 8))
+    /** Lines of synopsis; 0 shows the whole text. New key: installs from before 2.1.9 still carry the old default (4). */
+    var synopsisLines: Int get() = i("synopsisLinesAll", AppleTvDesign.value("synopsisLines")); set(v) = putI("synopsisLinesAll", v.coerceIn(0, 12))
     /** window (dots on a pill) | liquid (liquid-glass drops, no pill) | progress | hidden */
     var dotsMode: String get() = s("dotsMode", AppleTvDesign.value("dotsMode")); set(v) = putS("dotsMode", v)
     /** apple (Apple TV: the new picture opens up from the side with parallax) | slide (push) | fade */
