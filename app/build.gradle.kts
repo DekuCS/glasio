@@ -13,14 +13,16 @@ android {
         applicationId = "com.glasslauncher.tv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21005
-        versionName = "2.1.5"
+        versionCode = 21006
+        versionName = "2.1.6"
         // Trakt app (PKCE, no secret). Kept in local.properties, which is not committed.
         val props = Properties().apply {
             rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
         }
         buildConfigField("String", "TRAKT_CLIENT_ID", "\"${props.getProperty("TRAKT_CLIENT_ID", "")}\"")
-        buildConfigField("String", "NUVIO_ANON_KEY", "\"${props.getProperty("NUVIO_ANON_KEY", "")}\"")
+        // Public anonymous key every Nuvio client ships; local.properties may override it. A blank value made
+        // every Nuvio request answer 401.
+        buildConfigField("String", "NUVIO_ANON_KEY", "\"${props.getProperty("NUVIO_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzgxNTIxMzQ2LCJleHAiOjE5MzkyMDEzNDZ9.tmQaj682pwzehpqlgCDMnySOqiUvpgRbrE43T4VJpDI")}\"")
         buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"${props.getProperty("TMDB_READ_ACCESS_TOKEN", "")}\"")
         buildConfigField("String", "SIMKL_CLIENT_ID", "\"${props.getProperty("SIMKL_CLIENT_ID", "")}\"")
     }
