@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class GlassApp : Application(), coil3.SingletonImageLoader.Factory {
@@ -113,10 +114,14 @@ class GlassApp : Application(), coil3.SingletonImageLoader.Factory {
         updater = com.glasslauncher.tv.data.Updater(this, scope).also { it.start() }
         // If Glass was closed while the TV screensaver was being started, put the screen timeout back.
         Thread { com.glasslauncher.tv.saver.SystemDream.restoreIfPending(this) }.apply { isDaemon = true }.start()
-        icons.importDropFolder(apps.apps.value.map { it.pkg })
         ensureHomeService()
-        // Decode dock artwork once, off the main thread, so the first frames are instant.
-        scope.launch { apps.apps.value.forEach { runCatching { apps.artwork(it) } } }
+        // Wait for the package scan, then import dropped icons and decode only the dock artwork off the main
+        // thread, so startup never blocks on the file system and the first frames are instant.
+        scope.launch(Dispatchers.IO) {
+            val list = apps.apps.first { it.isNotEmpty() }
+            icons.importDropFolder(list.map { it.pkg })
+            apps.dockEntries().forEach { runCatching { apps.artwork(it) } }
+        }
     }
 
     /**

@@ -1863,7 +1863,6 @@ private fun IconArt(art: Art?, label: String, style: String, s: Float) {
         return
     }
     val bm = art.bmp
-    val wide = bm.width > bm.height * 1.3f
     val filter = when {
         style == "bow" && art.transparent -> ColorFilter.tint(Color(0xFF0E0E10), BlendMode.SrcIn)
         style == "bow" -> grayscale
@@ -1871,8 +1870,9 @@ private fun IconArt(art: Art?, label: String, style: String, s: Float) {
     }
     Image(
         bm, label, colorFilter = filter, filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-        contentScale = if (wide && !art.transparent) ContentScale.Crop else ContentScale.Fit,
-        modifier = Modifier.fillMaxSize().padding(if (wide && !art.transparent) 0.dp else (8 * s).dp),
+        // Opaque artwork fills the tile (a square app icon otherwise leaves bars beside it); glyphs stay whole.
+        contentScale = if (art.transparent) ContentScale.Fit else ContentScale.Crop,
+        modifier = Modifier.fillMaxSize().padding(if (art.transparent) (8 * s).dp else 0.dp),
     )
 }
 

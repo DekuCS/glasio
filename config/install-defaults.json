@@ -15,7 +15,7 @@
   "cwProgress": true,
   "cwTrakt": false,
   "descLang": "de",
-  "dockApps": "space.nuvio.nativelegacy\ncom.google.android.youtube.tv\ncom.spotify.tv.android\ncom.netflix.ninja\napp.smarttube.glassio\nglassio.settings",
+  "dockApps": "space.nuvio.nativelegacy\nio.github.ivanosh.smarttubematerial\ncom.spotify.tv.android\nglassio.settings",
   "dockFit": true,
   "dockHide": false,
   "dockPos": "bottom",

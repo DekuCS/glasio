@@ -29,8 +29,7 @@ object CompanionApps {
 
     val aerialViews = App("Aerial Views", "com.neilturner.aerialviews", "theothernt/AerialViews",
         releaseTag = "1.8.5", assetName = "aerial-views-1.8.5.apk")
-    val smartTube = App("SmartTube", "org.smarttube.stable", "yuliskov/SmartTube",
-        releaseTag = "32.68s", assetName = "SmartTube_stable_32.68_universal.apk")
+    val smartTube = App("SmartTube Glasio", DockLayout.SMARTTUBE, "DekuCS/SmartTube-Glasio")
 
     fun isFireTv(manufacturer: String = Build.MANUFACTURER, model: String = Build.MODEL) =
         manufacturer.equals("Amazon", true) || model.startsWith("AFT", true)
@@ -51,6 +50,7 @@ object CompanionApps {
         } else it.url.startsWith(prefix) && when (app) {
             nuvio -> it.name.startsWith("Nuvio-", true) && it.name.endsWith("-android.apk", true)
             fixer -> it.name.startsWith("firestick-fixer", true) && it.name.endsWith(".apk", true)
+            smartTube -> it.name.startsWith("SmartTube_", true) && it.name.endsWith("_universal.apk", true)
             else -> false
         }
     }.sortedBy { if (it.name == "firestick-fixer.apk") 0 else 1 }.firstOrNull()

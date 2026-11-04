@@ -26,6 +26,7 @@
         <package android:name="io.github.hatim.firestickfixer"/>
         <package android:name="com.neilturner.aerialviews"/>
         <package android:name="org.smarttube.stable"/>
+        <package android:name="io.github.ivanosh.smarttubematerial"/>
         <package android:name="com.nuvioreshaped.tv"/>
     </queries>
 

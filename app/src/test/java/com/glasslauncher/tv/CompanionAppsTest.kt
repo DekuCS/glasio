@@ -20,7 +20,7 @@ class CompanionAppsTest {
     }
 
     @Test fun pinnedAppsAcceptOnlyTheRequestedReleaseAndUniversalAsset() {
-        for (app in listOf(CompanionApps.aerialViews, CompanionApps.smartTube)) {
+        for (app in listOf(CompanionApps.aerialViews)) {
             val good = CompanionApps.Asset(app.assetName!!,
                 "https://github.com/${app.repo}/releases/download/${app.releaseTag}/${app.assetName}", 12, "")
             assertEquals(good, CompanionApps.selectAsset(app, listOf(good)))
@@ -29,6 +29,15 @@ class CompanionAppsTest {
                 good.copy(name = "other.apk"),
                 good.copy(url = good.url.replace("github.com", "github.com.example.org")))))
         }
+    }
+
+    @Test fun smartTubeComesFromTheGlasioForkAndSelectsTheUniversalApk() {
+        val app = CompanionApps.smartTube
+        assertEquals("DekuCS/SmartTube-Glasio", app.repo)
+        val candidates = listOf("SmartTube_material_32.68-11_arm64-v8a.apk",
+            "SmartTube_material_32.68-11_universal.apk").map { asset(app.repo, it) }
+        assertEquals(candidates.last(), CompanionApps.selectAsset(app, candidates))
+        assertNull(CompanionApps.selectAsset(app, candidates.dropLast(1)))
     }
 
     @Test fun fixerPrefersThePublishersStableAssetName() {

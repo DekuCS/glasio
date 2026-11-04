@@ -16,17 +16,18 @@ class DockLayoutTest {
         assertFalse(design.migration(old + ("dockApps" to "custom.app")).containsKey("dockApps"))
     }
 
-    @Test fun defaultsKeepTheOwnersSixDockRolesInOrder() {
-        assertEquals(listOf("space.nuvio.nativelegacy", "com.google.android.youtube.tv",
-            "com.spotify.tv.android", "com.netflix.ninja", "app.smarttube.glassio", "glassio.settings"), DockLayout.defaults)
+    @Test fun defaultsKeepOnlyNuvioSmartTubeSpotifyAndSettings() {
+        assertEquals(listOf("space.nuvio.nativelegacy", DockLayout.SMARTTUBE,
+            "com.spotify.tv.android", DockLayout.SETTINGS), DockLayout.defaults)
     }
 
     @Test fun fireTvYoutubeAliasKeepsTheRequestedPositionAndOtherAppsStayOut() {
         val installed = setOf("space.nuvio.nativelegacy", "com.amazon.firetv.youtube",
             "com.spotify.tv.android", "com.netflix.ninja", "unrelated.app")
         assertEquals(listOf("space.nuvio.nativelegacy", "com.amazon.firetv.youtube",
-            "com.spotify.tv.android", "com.netflix.ninja", DockLayout.SETTINGS),
-            DockLayout.resolve(DockLayout.defaults, installed, emptySet()))
+            "com.spotify.tv.android", DockLayout.SETTINGS),
+            DockLayout.resolve(listOf("space.nuvio.nativelegacy", DockLayout.YOUTUBE, "com.spotify.tv.android", DockLayout.SETTINGS),
+                installed, emptySet()))
     }
 
     @Test fun customPinsOrderHiddenAndMissingAppsAreRespected() {

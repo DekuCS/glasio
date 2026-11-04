@@ -4,7 +4,8 @@ package com.glasslauncher.tv.data
 object DockLayout {
     const val SETTINGS = "glassio.settings"
     const val YOUTUBE = "com.google.android.youtube.tv"
-    val defaults = listOf("space.nuvio.nativelegacy", YOUTUBE, "com.spotify.tv.android", "com.netflix.ninja", "app.smarttube.glassio", SETTINGS)
+    const val SMARTTUBE = "io.github.ivanosh.smarttubematerial"
+    val defaults = listOf("space.nuvio.nativelegacy", SMARTTUBE, "com.spotify.tv.android", SETTINGS)
     private val youtubePackages = listOf(YOUTUBE, "com.amazon.firetv.youtube")
 
     fun resolve(selected: List<String>, installed: Set<String>, hidden: Set<String>): List<String> =

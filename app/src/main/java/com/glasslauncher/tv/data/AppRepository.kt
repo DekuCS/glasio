@@ -12,9 +12,12 @@ import android.graphics.drawable.Drawable
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class AppEntry(val pkg: String, val label: String, val component: ComponentName, val leanback: Boolean)
@@ -33,12 +36,14 @@ class AppRepository(private val ctx: Context, private val settings: Settings, pr
         "com.google.android.videos", "com.android.vending",
     )
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(c: Context?, i: Intent?) { reload() }
+        override fun onReceive(c: Context?, i: Intent?) { scope.launch { reload() } }
     }
 
     fun start() {
-        reload()
+        scope.launch { reload() }
         val f = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REMOVED)
             addAction(Intent.ACTION_PACKAGE_CHANGED); addDataScheme("package")
@@ -71,7 +76,8 @@ class AppRepository(private val ctx: Context, private val settings: Settings, pr
         val byPkg = all.associateBy { it.pkg }
         val result = mutableListOf<AppEntry>()
         saved.forEach { p -> byPkg[p]?.let(result::add) }
-        val rest = all.filter { a -> result.none { it.pkg == a.pkg } }
+        val have = result.mapTo(HashSet()) { it.pkg }
+        val rest = all.filter { it.pkg !in have }
         val rank = { a: AppEntry -> preferred.indexOf(a.pkg).let { if (it < 0) Int.MAX_VALUE else it } }
         result += rest.sortedWith(compareBy<AppEntry> { rank(it) }.thenBy { it.label.lowercase() })
         return if (includeHidden) result else result.filter { it.pkg !in hidden }
