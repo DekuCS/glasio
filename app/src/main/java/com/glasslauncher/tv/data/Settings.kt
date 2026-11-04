@@ -116,9 +116,9 @@ class Settings(private val ctx: Context) {
         val tier = if (m == "auto") deviceTier().takeIf { it == "performance" } else m
         when (tier) {
             // Performance: pictures at 1280 px and drawn at 2/3 resolution, no rim refraction (no GPU effects at
-            // all), a plain crossfade and small caches: for 2 GB TVs and older graphics chips.
+            // all), small caches: for 2 GB TVs and older graphics chips. The slide stays Apple TV's.
             "performance" -> { imageQuality = "high"; prefetchDepth = 2; transitionMs = 300; refraction = 0; heroGallery = false; glassRes = 480
-                pageScale = 0.667f; slideAnim = "fade"; memTier = 0; saverQuality = "1080-H264"; cacheMb = 1024 }
+                pageScale = 0.667f; slideAnim = "apple"; memTier = 0; saverQuality = "1080-H264"; cacheMb = 1024 }
             "balanced" -> writeValues(AppleTvDesign.balanced)
             "quality" -> { imageQuality = "max"; prefetchDepth = 6; transitionMs = 700; refraction = 14; heroGallery = true; galleryShots = 3; glassRes = 720
                 pageScale = 1f; memTier = 2 }

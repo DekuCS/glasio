@@ -101,7 +101,7 @@
   "showMeta": true,
   "showSynopsis": true,
   "shuffle": true,
-  "slideAnim": "fade",
+  "slideAnim": "apple",
   "surprise": true,
   "surpriseMin": 60,
   "synopsisLines": 4,

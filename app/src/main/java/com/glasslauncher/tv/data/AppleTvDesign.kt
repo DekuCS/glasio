@@ -38,7 +38,7 @@ object AppleTvDesign {
         "refraction" to 0,
         "glassTint" to 4,
         "heroAutoplay" to true,
-        "slideAnim" to "fade",
+        "slideAnim" to "apple",
         "transitionMs" to 800,
         "heroButtons" to "apple",
         "heroPlus" to true,

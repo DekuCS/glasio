@@ -1207,8 +1207,8 @@ private fun HeroInfo(
                 if (settings.showMeta) {
                     Spacer(Modifier.height((16 * s).dp))
                     Row(horizontalArrangement = Arrangement.spacedBy((6 * s * m).dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (it.rating.isNotBlank()) Chip("★ ${it.rating}", s * m)
-                        if (it.year.isNotBlank()) Chip(it.year, s * m)
+                        if (it.rating.isNotBlank()) Chip(it.rating, s * m, 1)
+                        if (it.year.isNotBlank()) Chip(it.year, s * m, 2)
                         if (it.platform.isNotBlank()) Chip(it.platform, s * m)
                     }
                 }
@@ -1331,13 +1331,33 @@ private val WhiteLogo = ColorFilter.tint(Color.White, BlendMode.SrcIn)
 @Composable private fun logoTint(): ColorFilter? = if ((LocalContext.current.applicationContext as GlassApp).settings.logoWhite) WhiteLogo else null
 
 @Composable
-private fun Chip(text: String, s: Float) {
-    Text(
-        text, color = Color.White.copy(alpha = 0.92f), fontSize = (10.5f * s).sp,
-        modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape((3 * s).dp))
-            .padding(horizontal = (6 * s).dp, vertical = (1.5f * s).dp),
-    )
+private fun Chip(text: String, s: Float, kind: Int = 0) {
+    val shape = RoundedCornerShape((3 * s).dp)
+    val pad = Modifier.padding(horizontal = (6 * s).dp, vertical = (1.5f * s).dp)
+    when (kind) {
+        // Rating: filled yellow star, white number, the outline every chip has.
+        1 -> Row(
+            modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.55f), shape).then(pad),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("★", color = RatingStar, fontSize = (10.5f * s).sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.width((3 * s).dp))
+            Text(text, color = Color.White, fontSize = (10.5f * s).sp, fontWeight = FontWeight.Medium)
+        }
+        // Year: white plate, black number.
+        2 -> Text(
+            text, color = Color.Black, fontSize = (10.5f * s).sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.background(Color.White, shape).then(pad),
+        )
+        else -> Text(
+            text, color = Color.White.copy(alpha = 0.92f), fontSize = (10.5f * s).sp,
+            modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.55f), shape).then(pad),
+        )
+    }
 }
+
+/** Apple's rating star yellow. */
+private val RatingStar = Color(0xFFFFC400)
 
 @Composable
 private fun Dots(total: Int, current: Int, mode: String, max: Int, s: Float, modifier: Modifier) {

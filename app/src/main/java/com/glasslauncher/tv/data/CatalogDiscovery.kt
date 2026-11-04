@@ -55,6 +55,19 @@ object CatalogDiscovery {
         return out
     }
 
+    /** The country's own chart leads; the add-on feeds fill the rest, without duplicates. */
+    fun lead(region: List<HeroItem>, rest: List<HeroItem>, cap: Int): List<HeroItem> {
+        if (region.isEmpty()) return rest
+        val out = ArrayList<HeroItem>(region.size + rest.size)
+        val seen = HashSet<String>()
+        for (item in region + rest) {
+            if (!seen.add(item.key)) continue
+            out += item
+            if (cap > 0 && out.size >= cap) break
+        }
+        return out
+    }
+
     fun url(c: CatalogRef, skip: Int): String {
         fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
         val extras = c.extra.toMutableMap()

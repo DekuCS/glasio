@@ -22,6 +22,9 @@ class Tmdb(private val http: Http) {
             !first.isAfter(today) && !first.isBefore(today.minusDays(730))
         }.getOrDefault(false)
 
+        /** Country whose charts the carousel follows: what is popular, trending and new here, not in the US. */
+        const val REGION = "DE"
+
         /** TMDB's v3 API Key (32 hex characters): not what Glassio takes. */
         fun looksLikeApiKey(t: String) = Regex("^[0-9a-fA-F]{32}$").matches(t.trim())
 
@@ -81,6 +84,78 @@ class Tmdb(private val http: Http) {
                     background = "https://image.tmdb.org/t/p/original$backdrop", logo = "",
                     overview = m.optString("overview"), rating = String.format(Locale.US, "%.1f", m.optDouble("vote_average")),
                     year = m.optString("first_air_date").take(4), genres = listOf("Anime"), platform = "")
+            }
+        } }.awaitAll().filterNotNull()
+    }
+
+    /**
+     * What is popular, trending and new in [REGION] right now, from the charts that know the country:
+     * now playing (German cinemas), popular (ranked for the region), the German productions, and the weekly
+     * trend list (the only one TMDB has no region parameter for). Round-robin over the feeds, so no single
+     * chart fills the carousel. IMDb IDs are resolved here because that is what the add-ons play by.
+     */
+    suspend fun discovery(token: String, lang: String, limit: Int): List<HeroItem> = coroutineScope {
+        if (token.isBlank() || limit <= 0) return@coroutineScope emptyList()
+        val language = TMDB_LANGS[lang] ?: "de-DE"
+        val feeds = listOf(
+            "movie/now_playing?region=$REGION",
+            "trending/all/week",
+            "movie/popular?region=$REGION",
+            "tv/popular",
+            "discover/movie?sort_by=popularity.desc&with_origin_country=$REGION",
+            "discover/tv?sort_by=popularity.desc&with_origin_country=$REGION",
+        )
+        val per = (limit / feeds.size + 3).coerceIn(4, 20)
+        val rows = feeds.map { feed ->
+            async {
+                runCatching {
+                    get("https://api.themoviedb.org/3/$feed&language=$language&include_adult=false", token)
+                        .optJSONArray("results")
+                }.getOrNull()?.let { arr -> (0 until minOf(arr.length(), per)).mapNotNull { arr.optJSONObject(it) } }
+                    .orEmpty().toMutableList()
+            }
+        }.awaitAll().filter { it.isNotEmpty() }
+        if (rows.isEmpty()) return@coroutineScope emptyList()
+
+        val picked = mutableListOf<JSONObject>()
+        val seen = HashSet<Int>()
+        var turn = 0
+        // Bounded: every row shrinks by one per turn, so this ends even if every entry is a duplicate.
+        while (picked.size < limit && rows.any { it.isNotEmpty() } && turn < limit * rows.size) {
+            val row = rows[turn % rows.size]
+            if (row.isNotEmpty()) {
+                val m = row.removeAt(0)
+                if (seen.add(m.optInt("id"))) picked += m
+            }
+            turn++
+        }
+
+        val gate = Semaphore(6)
+        picked.map { m -> async {
+            gate.withPermit {
+                val id = m.optInt("id")
+                if (id <= 0) return@withPermit null
+                val isTv = m.optString("media_type") == "tv" || m.has("first_air_date")
+                val kind = if (isTv) "tv" else "movie"
+                val imdb = runCatching { get("https://api.themoviedb.org/3/$kind/$id/external_ids", token).optString("imdb_id") }
+                    .getOrNull()?.takeIf { it.matches(Regex("tt\\d{7,10}")) } ?: return@withPermit null
+                val backdrop = m.optString("backdrop_path").takeIf { it.startsWith("/") } ?: return@withPermit null
+                val name = (if (isTv) m.optString("name") else m.optString("title"))
+                    .ifBlank { if (isTv) m.optString("original_name") else m.optString("original_title") }
+                if (name.isBlank()) return@withPermit null
+                val poster = m.optString("poster_path").takeIf { it.startsWith("/") }.orEmpty()
+                val date = if (isTv) m.optString("first_air_date") else m.optString("release_date")
+                val score = m.optDouble("vote_average", 0.0)
+                HeroItem(
+                    key = "${if (isTv) "series" else "movie"}:$imdb", id = imdb, type = if (isTv) "series" else "movie",
+                    name = name,
+                    poster = if (poster.isEmpty()) "" else "https://image.tmdb.org/t/p/original$poster",
+                    background = "https://image.tmdb.org/t/p/original$backdrop", logo = "",
+                    overview = m.optString("overview"),
+                    rating = if (score > 0.1) String.format(Locale.US, "%.1f", score) else "",
+                    year = if (date.matches(Regex("(19|20)\\d{2}.*"))) date.take(4) else "",
+                    genres = emptyList(), platform = "",
+                )
             }
         } }.awaitAll().filterNotNull()
     }
@@ -145,10 +220,14 @@ class Tmdb(private val http: Http) {
                 .sortedWith(compareBy<JSONObject> { if (it.isNull("iso_639_1")) 0 else 1 }.thenBy { if (it.optInt("width") > 3840) 1 else 0 }.thenByDescending { it.optInt("width") })
                 .firstOrNull()?.let { "https://image.tmdb.org/t/p/original" + it.optString("file_path") }
         }.orEmpty()
-        val genresEn = if (lang != "en") runCatching { get("https://api.themoviedb.org/3/$kind/$tmdbId?language=en-US", token) }.getOrDefault(d) else d
-        val genres = genresEn.optJSONArray("genres")?.let { g ->
+        // Genres follow the synopsis language; English only when TMDB has no translation for this title.
+        fun genresOf(src: JSONObject): List<String> = src.optJSONArray("genres")?.let { g ->
             (0 until minOf(3, g.length())).mapNotNull { g.optJSONObject(it)?.optString("name")?.takeIf { n -> n.isNotBlank() } }
         }.orEmpty()
+        val genres = genresOf(d).ifEmpty {
+            if (lang == "en") emptyList()
+            else runCatching { get("https://api.themoviedb.org/3/$kind/$tmdbId?language=en-US", token) }.getOrNull()?.let(::genresOf).orEmpty()
+        }
         val score = d.optDouble("vote_average", -1.0)
         val rating = if (score > 0.1) String.format(Locale.US, "%.1f", score) else ""
         val date = if (isTv) d.optString("first_air_date") else d.optString("release_date")
@@ -171,9 +250,11 @@ class Tmdb(private val http: Http) {
     }
 
     private fun provider(kind: String, id: Int, token: String): String {
-        val us = get("https://api.themoviedb.org/3/$kind/$id/watch/providers", token).optJSONObject("results")?.optJSONObject("US") ?: return ""
+        val results = get("https://api.themoviedb.org/3/$kind/$id/watch/providers", token).optJSONObject("results") ?: return ""
+        // The German catalogue first: a platform that only carries the title in the US is not on this TV.
+        val country = results.optJSONObject(REGION) ?: results.optJSONObject("US") ?: return ""
         for (cat in listOf("flatrate", "free", "ads")) {
-            val arr = us.optJSONArray(cat) ?: continue
+            val arr = country.optJSONArray(cat) ?: continue
             for (i in 0 until arr.length()) {
                 val name = display(arr.optJSONObject(i)?.optString("provider_name").orEmpty())
                 if (name.isNotBlank()) return name

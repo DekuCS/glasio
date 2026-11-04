@@ -919,9 +919,11 @@ fun SettingsScreen(app: GlassApp, initialCat: Int, onClose: () -> Unit) {
         }.isSuccess
         if (!ok || !anyFocus) runCatching { catFocus[cat].requestFocus() }
     }
-    Box(Modifier.fillMaxSize().onFocusChanged { anyFocus = it.hasFocus }.background(Color.Black.copy(alpha = 0.55f)).padding((28 * s).dp)) {
+    // Light scrim only: at 55% black the panels had nothing to refract and their rounded corners read as black
+    // blocks. The picture stays visible, so the glass and its corners sit on it.
+    Box(Modifier.fillMaxSize().onFocusChanged { anyFocus = it.hasFocus }.background(Color.Black.copy(alpha = 0.30f)).padding((28 * s).dp)) {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy((16 * s).dp)) {
-            GlassPanel(Modifier.width((230 * s).dp).fillMaxHeight(), (30 * s).dp, style = st.panelStyle, darken = 0.42f) {
+            GlassPanel(Modifier.width((230 * s).dp).fillMaxHeight(), (30 * s).dp, style = st.panelStyle, darken = 0.20f) {
                 // Scrolls when the list is taller than the screen (the last entry, About, was cut off).
                 Column(Modifier.padding(horizontal = (14 * s).dp, vertical = (12 * s).dp).verticalScroll(rememberScrollState())) {
                     Text("Settings", color = Color.White, fontSize = (22 * s).sp, fontWeight = FontWeight.Light, modifier = Modifier.padding(start = (8 * s).dp, bottom = (4 * s).dp))
@@ -957,7 +959,7 @@ fun SettingsScreen(app: GlassApp, initialCat: Int, onClose: () -> Unit) {
                         }
                     }
                     .focusGroup(),
-                (30 * s).dp, style = st.panelStyle, darken = 0.42f,
+                (30 * s).dp, style = st.panelStyle, darken = 0.20f,
             ) {
                 val c = categories[shownCat]
                 Column(Modifier.padding((18 * s).dp)) {

@@ -208,6 +208,8 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
             }
             val per = settings.perCatalog
             val results = java.util.concurrent.ConcurrentHashMap<String, List<HeroItem>>()
+            // Filled by the TMDB chart for Germany; empty without a token or when the request fails.
+            var region: List<HeroItem> = emptyList()
             fun merge(shuffle: Boolean): List<HeroItem> {
                 if (recommended.isNotEmpty()) return CatalogDiscovery.merge(chosen, results, settings.maxItems, shuffle)
                 val merged = mutableListOf<HeroItem>()
@@ -225,7 +227,7 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
                 return if (shuffle) merged.shuffled() else merged
             }
             coroutineScope {
-                chosen.map { c ->
+                val jobs = chosen.map { c ->
                     async {
                         gate.withPermit {
                             results[c.key] = runCatching { fetchCatalog(c, per, discovery) }.getOrDefault(emptyList())
@@ -234,7 +236,12 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
                             status.value = "Loading ${results.size}/${chosen.size} catalogs…"
                         }
                     }
-                }.awaitAll()
+                } + if (discovery && settings.tmdbToken.isNotBlank()) listOf(async {
+                    // The German chart runs alongside the add-ons and leads the carousel when it lands.
+                    region = runCatching { tmdb.discovery(settings.tmdbToken, settings.descLang, per.coerceAtMost(40)) }
+                        .getOrDefault(emptyList())
+                }) else emptyList()
+                jobs.awaitAll()
             }
             // MAL/add-on outages must not remove anime from discovery altogether.
             if (discovery && chosen.filter { CatalogDiscovery.group(it) == "anime" }.all { results[it.key].isNullOrEmpty() }) {
@@ -247,7 +254,7 @@ class CatalogRepository(private val ctx: Context, private val settings: Settings
             }
             val merged = if (discovery) CatalogDiscovery.merge(chosen, results, settings.maxItems, settings.shuffle || settings.surprise)
                 else merge(settings.shuffle || settings.surprise)
-            items.value = merged
+            items.value = CatalogDiscovery.lead(region, merged, settings.maxItems)
             status.value = (if (recommended.isNotEmpty()) "Neu & beliebt · " else "") + "${merged.size} titles from ${chosen.size} catalogs"
         }
     }
