@@ -391,6 +391,12 @@ class Settings(private val ctx: Context) {
     var interceptHome: Boolean get() = b("interceptHome", false); set(v) = putB("interceptHome", v)
     /** Opens Glassio when the TV starts (needs the "display over other apps" right, given over ADB). */
     var bootStart: Boolean get() = b("bootStart", AppleTvDesign.value("bootStart")); set(v) = putB("bootStart", v)
+    /** Package opened when the TV starts; blank opens Glassio itself. */
+    var bootApp: String get() = s("bootApp", ""); set(v) = putS("bootApp", v)
+    /** Remote buttons remapped in System, one "keyCode|package" line each (see RemoteKeys). */
+    var remoteKeys: List<String> get() = list("remoteKeys"); set(v) = putList("remoteKeys", v)
+    /** Fire TV app buttons redirected in System, one "sourcePackage|targetPackage" line each (see AppButtons). */
+    var appButtons: List<String> get() = list("appButtons"); set(v) = putList("appButtons", v)
     /** Manage from phone: minutes the page stays on after you leave that screen (0 = stops at once). */
     var phoneMinutes: Int get() = i("phoneMinutes", 30); set(v) = putI("phoneMinutes", v.coerceIn(0, 720))
     /** App language, a key of I18n.LANGS. */

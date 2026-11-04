@@ -172,6 +172,12 @@ fun SettingsScreen(app: GlassApp, initialCat: Int, onClose: () -> Unit) {
         missing.forEach { com.glasslauncher.tv.saver.VideoThumbs.get(ctx, it) }
         if ((dialog as? ThumbDialog)?.title == title) dialog = ThumbDialog(title, items())
     }
+    /** Installed app's name; a package Glassio can't see keeps its package name. Blank = Glassio itself. */
+    fun appName(pkg: String): String = if (pkg.isBlank()) "Glassio" else allApps.firstOrNull { it.pkg == pkg }?.label ?: pkg
+    /** Pick one installed app; blank means Glassio itself. */
+    fun pickApp(title: String, onPick: (String) -> Unit) {
+        dialog = MenuDialog(title, app.apps.ordered().map { e -> e.label to { onPick(e.pkg) } })
+    }
     // A row that opens another section (things that belong together are reachable from both).
     val weatherFound by app.weather.found.collectAsState()
     val catTitles = remember { arrayOf<List<String>>(emptyList()) }
@@ -814,14 +820,44 @@ fun SettingsScreen(app: GlassApp, initialCat: Int, onClose: () -> Unit) {
                     }
                 },
                 Act("Choose default home app", "", "") { openSystem(ctx, AndroidSettings.ACTION_HOME_SETTINGS) },
-                Toggle("Open Glassio when the TV starts", "Glassio opens on its own after the TV turns on. The right to do so is given over ADB (TV access, below)", { st.bootStart }, { on ->
+                Toggle("Open an app when the TV starts", "Glassio or any app you pick opens on its own after the TV turns on. Needs the accessibility service above", { st.bootStart }, { on ->
                     st.bootStart = on
                     if (on) scope.launch(Dispatchers.IO) {
                         val r = com.glasslauncher.tv.data.LocalShell.run(ctx, "appops set ${ctx.packageName} SYSTEM_ALERT_WINDOW allow; " +
                             "cmd package set-home-activity ${ctx.packageName}/com.glasslauncher.tv.MainActivity >/dev/null 2>&1; true")
-                        toast(ctx, if (r.isSuccess) "Glassio opens when the TV starts" else "Saved. Allow TV access (ADB) below so the TV lets Glassio open")
+                        toast(ctx, if (r.isSuccess) "Saved" else "Saved. Allow TV access (ADB) below so the TV lets the app open")
                     }
                 }),
+                Act("App at start-up", if (st.bootApp.isBlank()) "Glassio" else appName(st.bootApp), "Change") {
+                    pickApp("Open which app at start-up?") { st.bootApp = it }
+                },
+                Act("Add a remote button", "Press a button on the remote, then pick the app it opens in any app. Needs the accessibility service above", "") {
+                    dialog = KeyCaptureDialog { code ->
+                        pickApp("Open which app with the ${com.glasslauncher.tv.data.RemoteKeys.label(code)} button?") { pkg ->
+                            st.remoteKeys = st.remoteKeys.filterNot { it.substringBefore('|').toIntOrNull() == code } +
+                                com.glasslauncher.tv.data.RemoteKeys.format(code, pkg)
+                        }
+                    }
+                },
+                Act("Redirect an app button", "Press a Fire TV button that opens its own app (YouTube, Netflix, …): pick that app, then the app that should open instead", "") {
+                    pickApp("Which app does the button open?") { source ->
+                        pickApp("Open which app instead of ${appName(source)}?") { target ->
+                            if (source != target) {
+                                st.appButtons = st.appButtons.filterNot { it.substringBefore('|') == source } +
+                                    com.glasslauncher.tv.data.AppButtons.format(source, target)
+                            }
+                        }
+                    }
+                },
+            ) + com.glasslauncher.tv.data.RemoteKeys.parse(st.remoteKeys).map { (code, pkg) ->
+                Act(com.glasslauncher.tv.data.RemoteKeys.label(code), "Opens ${appName(pkg)}", "Remove") {
+                    st.remoteKeys = st.remoteKeys.filterNot { it == com.glasslauncher.tv.data.RemoteKeys.format(code, pkg) }
+                }
+            } + com.glasslauncher.tv.data.AppButtons.parse(st.appButtons).map { (source, pkg) ->
+                Act("${appName(source)} button", "Opens ${appName(pkg)}", "Remove") {
+                    st.appButtons = st.appButtons - com.glasslauncher.tv.data.AppButtons.format(source, pkg)
+                }
+            } + listOf(
                 Adjust("Hold Home", "What holding the Home button does, in any app (needs the Home button service above)", {
                     when (st.homeLong) { "recents" -> "Open apps (like Apple TV)"; "camera" -> "Camera in the corner, over any app"; "library" -> "Open the Library"; "menu" -> "Open the menu"; else -> "Nothing" }
                 }, { st.homeLong = cycle(listOf("off", "recents", "camera", "library", "menu"), st.homeLong, it) }),

@@ -1834,10 +1834,11 @@ private fun FocusColorArt(art: Art?, label: String, s: Float, litState: androidx
         return
     }
     val bm = art.bmp
+    // Wide artwork (SmartTube's banner) and opaque artwork fill the tile; a square transparent glyph stays whole.
     val wide = bm.width > bm.height * 1.3f
-    val crop = wide && !art.transparent
-    val mod = Modifier.fillMaxSize().padding(if (crop) 0.dp else (8 * s).dp)
-    val scale = if (crop) ContentScale.Crop else ContentScale.Fit
+    val fill = wide || !art.transparent
+    val mod = Modifier.fillMaxSize().padding(if (fill) 0.dp else (8 * s).dp)
+    val scale = if (fill) ContentScale.Crop else ContentScale.Fit
     // All three layers stay composed; only their alpha changes, read while drawing (no recomposition).
     Box(Modifier.fillMaxSize()) {
         // White: soft frosted white (not paper white). Dark: near-black glass. Glass: no plate at all, the tile
@@ -1870,9 +1871,9 @@ private fun IconArt(art: Art?, label: String, style: String, s: Float) {
     }
     Image(
         bm, label, colorFilter = filter, filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-        // Opaque artwork fills the tile (a square app icon otherwise leaves bars beside it); glyphs stay whole.
-        contentScale = if (art.transparent) ContentScale.Fit else ContentScale.Crop,
-        modifier = Modifier.fillMaxSize().padding(if (art.transparent) (8 * s).dp else 0.dp),
+        // Wide artwork (SmartTube's banner) and opaque artwork fill the tile; a square transparent glyph stays whole.
+        contentScale = if (bm.width > bm.height * 1.3f || !art.transparent) ContentScale.Crop else ContentScale.Fit,
+        modifier = Modifier.fillMaxSize().padding(if (bm.width <= bm.height * 1.3f && art.transparent) (8 * s).dp else 0.dp),
     )
 }
 

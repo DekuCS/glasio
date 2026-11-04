@@ -17,8 +17,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -59,10 +62,12 @@ class MenuDialog(val title: String, val options: List<Pair<String, () -> Unit>>)
 /** A list with a small picture next to each choice (pictures, videos, screensaver videos). */
 class ThumbDialog(val title: String, val items: List<ThumbItem>) : DialogState
 class ThumbItem(val label: String, val sub: String, val thumb: Any?, val checked: Boolean = false, val onClick: () -> Unit)
+/** Waits for one remote button press; Back cancels. */
+class KeyCaptureDialog(val onKey: (Int) -> Unit) : DialogState
 /** A sign-in code with a QR code of the page to enter it on; closes by itself when [code] turns null. */
-/** Put a list in order: OK picks a row up, ▲ ▼ carry it, OK puts it down. [onDone] gets the keys in the new order. */
-class ReorderDialog(val title: String, val items: List<Pair<String, String>>, val onDone: (List<String>) -> Unit) : DialogState
 class QrCodeDialog(val title: String, val url: String, val code: kotlinx.coroutines.flow.StateFlow<String?>, val note: String) : DialogState
+/** Put a list in order: OK picks a row up, the arrows carry it, OK puts it down. [onDone] gets the keys in the new order. */
+class ReorderDialog(val title: String, val items: List<Pair<String, String>>, val onDone: (List<String>) -> Unit) : DialogState
 
 @Composable
 fun DialogHost(state: DialogState?, onDismiss: () -> Unit) {
@@ -71,6 +76,7 @@ fun DialogHost(state: DialogState?, onDismiss: () -> Unit) {
         when (state) {
             is TextEntry -> TextEntryDialog(state, onDismiss)
             is MenuDialog -> MenuDialogView(state, onDismiss)
+            is KeyCaptureDialog -> KeyCaptureDialogView(state, onDismiss)
             is QrCodeDialog -> QrCodeDialogView(state, onDismiss)
             is ThumbDialog -> ThumbDialogView(state, onDismiss)
             is ReorderDialog -> ReorderDialogView(state, onDismiss)
@@ -145,9 +151,42 @@ private fun MenuDialogView(d: MenuDialog, onDismiss: () -> Unit) {
         ) {
             Text(d.title, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.Medium,
                 maxLines = 1, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
-            d.options.forEachIndexed { i, (label, action) ->
-                DialogButton(label, Modifier.fillMaxWidth().padding(bottom = 3.dp).let { if (i == 0) it.focusRequester(fr) else it }) { onDismiss(); action() }
+            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                d.options.forEachIndexed { i, (label, action) ->
+                    DialogButton(label, Modifier.fillMaxWidth().padding(bottom = 3.dp).let { if (i == 0) it.focusRequester(fr) else it }) { onDismiss(); action() }
+                }
             }
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
+}
+
+@Composable
+private fun KeyCaptureDialogView(d: KeyCaptureDialog, onDismiss: () -> Unit) {
+    var note by remember { mutableStateOf("Press the remote button that should open an app.") }
+    val fr = remember { FocusRequester() }
+    Dialog(onDismissRequest = onDismiss) {
+        DialogSurface(
+            width = 300,
+            modifier = Modifier.focusRequester(fr).focusable().onPreviewKeyEvent { ev ->
+                if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
+                if (ev.key == Key.Back) { onDismiss(); return@onPreviewKeyEvent true }
+                val code = ev.nativeKeyEvent.keyCode
+                // OK and Enter keep working so the Cancel button below can be reached.
+                if (code == android.view.KeyEvent.KEYCODE_DPAD_CENTER || code == android.view.KeyEvent.KEYCODE_ENTER) return@onPreviewKeyEvent false
+                if (!com.glasslauncher.tv.data.RemoteKeys.canBind(code)) {
+                    note = "That button is needed for navigation. Pick another one."
+                    return@onPreviewKeyEvent true
+                }
+                onDismiss()
+                d.onKey(code)
+                true
+            },
+        ) {
+            Text("Remote button", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 4.dp))
+            Text(note, color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+            Spacer(Modifier.height(8.dp))
+            DialogButton("Cancel", Modifier.fillMaxWidth()) { onDismiss() }
         }
     }
     LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }

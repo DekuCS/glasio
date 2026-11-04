@@ -15,6 +15,16 @@ Im Setup gibt es eine optionale Seite **Apps installieren**: Nuvio Legacy und au
 3. In **Einstellungen → Verbindungen** eigene Nuvio-/Trakt-/Stremio-/Simkl-Konten verbinden. Persönliche Konten, Verlauf, private Add-on-URLs, Wetterort und ADB-Schlüssel sind nicht in der APK enthalten.
 4. Home-Tasten-Übernahme und systemweiter Bildschirmschoner werden auf jedem Gerät separat eingerichtet. Die APK aktiviert keine fremde ADB-Verbindung und entfernt keinen vorhandenen Launcher.
 
+### Start-up-App und Fernbedienungs-Tasten
+
+Unter **Einstellungen → System** lassen sich zwei FireStick-Fixer-Funktionen ohne zusätzliche App nutzen:
+
+- **App beim TV-Start**: Glassio oder eine beliebige installierte App öffnet sich nach dem Einschalten von selbst.
+- **Fernbedienungs-Taste belegen**: eine Taste anlernen (z. B. Play/Pause, Farbe, Guide, Ziffern), danach eine App wählen. Die Taste öffnet diese App dann überall.
+- **App-Taste umleiten**: die YouTube-/Netflix-/Prime-Taste der Fire-TV-Fernbedienung öffnet ihr eigenes App-Fenster. Glasio erkennt das und öffnet stattdessen die gewählte App. Der kurz sichtbare Start der Original-App und die Alexa-Suche lassen sich ohne Systemrechte nicht abfangen.
+
+Beides läuft über den vorhandenen Home-Tasten-Dienst (Bedienungshilfen). Er muss einmal eingeschaltet werden; danach sind keine weiteren Berechtigungen und kein ADB nötig. Navigations-, Lautstärke- und Power-Tasten lassen sich bewusst nicht belegen, damit die Fernbedienung bedienbar bleibt.
+
 ## Installationsdefaults
 
 Die vollständige Liste steht in [config/install-defaults.json](config/install-defaults.json). Sie wurde aus der eingerichteten Fire-TV-Konfiguration übernommen. Die Kotlin-Defaults in `AppleTvDesign.kt` gelten für Neuinstallationen, fehlende Einstellungen und die explizite Preset-Aktion. Updates erhalten bereits gespeicherte Änderungen.
